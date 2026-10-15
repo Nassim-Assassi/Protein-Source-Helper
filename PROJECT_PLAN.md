@@ -120,7 +120,7 @@ independently while retaining a shared ID for the overall launch.
 ### Data conventions and ingestion rules
 
 1. Normalize nutrient values in the ETL before inserting snapshots. Store
-   values only per 100 g or per 100 ml and record the basis accordingly.
+  values per 100 g, per 100 ml, or per item and record the basis accordingly.
    Convert per-serving values only when serving quantity and unit allow a
    reliable conversion; otherwise leave nutrition values unknown. Do not
    convert between grams and millilitres without a reliable density.
@@ -140,8 +140,9 @@ independently while retaining a shared ID for the overall launch.
    later run is running, partial, or failed. Only mark a run successful in the
    same transaction that makes all its snapshots visible.
 6. Keep source URLs so values can be investigated.
-7. Treat missing non-required nutrition or package data as unknown, not zero.
-   Do not write a snapshot if energy or protein is unavailable.
+7. Treat missing non-required nutrition data as unknown, not zero. Package
+  quantity and unit are required for every snapshot. Do not write a snapshot
+  if energy or protein is unavailable.
    If a product is absent from a scrape, do not write a snapshot for it. Mark
    it inactive only after it is absent from two consecutive successful runs
    for its retailer; failed runs do not count as missing observations. If it
