@@ -17,7 +17,8 @@ daily. The implementation plan and milestones are in
 - Compare product price, package size, nutrition, and value metrics.
 - Sort for lowest price, protein per 100 g, or protein per pound.
 - Browse best-value options and, as history accumulates, price trends.
-- Show the latest successful data refresh and tracked retailer coverage.
+- Show the latest successful data refresh, latest attempt status, and tracked
+  retailer coverage.
 
 ## MVP product scope
 
@@ -33,7 +34,7 @@ of every grocery product.
    modest request rates.
 2. A shared normalization layer converts retailer-specific product data into a
    common schema.
-3. Scrape results are validated and upserted to Supabase Postgres.
+3. Scrape results are validated and upserted to PostgreSQL.
 4. GitHub Actions runs scheduled daily scrapes and records their outcomes.
 5. A Streamlit dashboard reads the public catalog and presents comparisons.
 
@@ -44,29 +45,56 @@ Asda; the final third retailer remains to be selected.
 
 ## Data and comparison conventions
 
-The initial database schema is in [`supabase/schema.sql`](./supabase/schema.sql).
-It defines retailers, products, daily price snapshots, daily nutrition
-snapshots, and scraper run records. Primary keys use incrementing `bigint`
-identity values, with `bigint` foreign keys referencing them. Product identity
-is retailer-specific, using the retailer and external product ID when
+The initial database schema is in [`database/schema.sql`](./database/schema.sql).
+It defines retailers, brands, categories, products, product snapshots, and
+scrape batches with retailer-specific run records. One batch ID groups the
+individual retailer runs launched together. Each snapshot combines one
+product's price and nutrition data collected in a single run. Primary key IDs
+use incrementing identity values: `snapshot_id` is `bigint`, and all other IDs
+are `int`. Foreign key columns use the same type as the referenced ID. Products
+refer to a retailer and optionally to normalized brand and category records.
+Product identity is retailer-specific, using the retailer and external product
+ID when available, or the canonical product source URL when no external ID is
 available.
 
-- Nutrition values should be normalized to per 100 g where the source data
-  permits.
+- Normalize nutrition values in the ETL before inserting snapshots. Store
+  values only per 100 g or per 100 ml, and record the basis in
+  `snapshot_nutrition_basis`. Convert per-serving values only when the serving
+  quantity and unit allow a reliable conversion; otherwise leave nutrition
+  values unknown. Do not convert between grams and millilitres without a
+  reliable density.
+- Every snapshot must include energy and protein values on its stated
+  nutrition basis. The database rejects snapshots missing either value; other
+  nutrient fields may remain unknown.
 - Package quantity and unit should be retained so unit-price calculations are
-  transparent. The schema calculates `price_per_100g` for gram-based package
-  sizes.
-- Price and nutrition snapshots are unique per product and UTC calendar day;
-  ingestion should upsert on `(product_id, snapshot_date)`.
-- Comparisons must distinguish unavailable values from zero and avoid
-  calculating metrics when required inputs are missing.
+  transparent. Derived comparison metrics are calculated by the application,
+  not stored as columns.
+- A snapshot row combines price and nutrition data and is unique per product
+  per scrape run. Ingestion should upsert on `(product_id, scrape_run_id)`;
+  run timestamps provide the collection window for its snapshots.
+- The `current_data` view exposes products with snapshots in each retailer's
+  most recent successful run only. It never falls back to an older snapshot
+  for a product omitted from that run, and includes data only when that run
+  finished within the last 24 hours. A retailer with no successful run in that
+  window contributes no rows. Running or failed attempts do not replace the
+  latest successful data; show run status separately if the dashboard needs
+  to communicate a newer attempt's progress or failure.
+- Missing products are not recorded as snapshots. A product is marked inactive
+  only after it is absent from two consecutive successful retailer runs;
+  failed runs do not count. A product omitted from the latest successful run
+  is hidden from `current_data` immediately, even before it is marked inactive.
+  Missing optional nutrient or package values remain unknown rather than
+  being treated as zero.
+- Comparisons must avoid calculating metrics when required inputs are missing.
 - Protein per pound should use protein per 100 g and price per 100 g, or
   equivalent package-level values, with consistent units.
 
 ## Repository contents
 
-- [`supabase/schema.sql`](./supabase/schema.sql) — initial Supabase tables,
-  constraints, indexes, update trigger, and public read policies.
+- [`database/schema.sql`](./database/schema.sql) — portable PostgreSQL tables,
+  constraints, indexes, and current-data views. ETL code supplies required
+  values explicitly; database roles and permissions are configured separately
+  for each hosting provider.
 - [`morrisons_mvp_links.txt`](./morrisons_mvp_links.txt) —
   Morrisons product links for initial exploration.
 - [`morrisons_product_categories.csv`](./morrisons_product_categories.csv) —
@@ -80,17 +108,20 @@ are planned work, not yet described here as completed features.
 
 ## Getting started
 
-The initial schema can be applied in the Supabase SQL Editor:
+The initial schema can be applied to a PostgreSQL database using `psql` or a
+provider's SQL editor (including Supabase):
 
-1. Create a Supabase project.
-2. Run [`supabase/schema.sql`](./supabase/schema.sql) in the SQL Editor.
+1. Create a PostgreSQL database.
+2. Run [`database/schema.sql`](./database/schema.sql) against the database.
 3. Add retailer records and configure scraper credentials for local
    development when the ingestion code is in place.
 
-Scraper writes should use a Supabase service-role key kept in a trusted
-environment, such as GitHub Actions secrets. Never expose that key in the
-public Streamlit application or commit it to the repository. The current
-Python dependencies are listed in [`requirements.txt`](./requirements.txt).
+Configure separate database credentials and least-privilege permissions for
+the scraper and dashboard on the selected provider. Keep credentials in a
+trusted environment, such as GitHub Actions secrets, and never expose write
+credentials in the public Streamlit application or commit them to the
+repository. The current Python dependencies are listed in
+[`requirements.txt`](./requirements.txt).
 
 ## Responsible data collection
 
