@@ -79,43 +79,39 @@ GitHub Actions schedules scraper runs and captures run outcomes.
 
 ## 4. Data model
 
-The initial SQL is maintained in [`database/schema.sql`](./database/schema.sql).
-The tables are:
+The current SQL is maintained in [`database/schema.sql`](./database/schema.sql).
+It defines:
 
-- `retailer`: `retailer_id`, supermarket name, homepage URL, and active status.
-- `brand`: `brand_id` and unique brand name.
-- `category`: `category_id` and unique category name.
-- `product`: `product_id`, `retailer_id`, optional `brand_id` and
-  `category_id`, retailer-specific product identity, name, source URL, image
-  URL, and active status.
-- `snapshot`: `snapshot_id`, `product_id`, `scrape_run_id`,
-  price, package quantity/unit, energy and protein values, optional additional
-  nutrition values, nutrition basis, and source information. The related run's
-  timestamps provide the collection window for its snapshots.
-- `scrape_batch`: `scrape_batch_id`, which groups retailer-specific runs
-  started together.
-- `scrape_run`: `scrape_run_id`, `scrape_batch_id`, `retailer_id`, status,
-  start/end times, and error details.
+- `retailer`: retailer name, URL, and active status.
+- `retailer_category`: category names scoped to a retailer.
+- `brand`: normalized brand names.
+- `canonical_product`: canonical product name, optional GTIN, and optional
+  brand.
+- `retailer_listing`: retailer-specific name, external ID, source and image
+  URLs, active status, canonical product, and optional retailer category.
+- `scrape_batch`: one coordinated scrape launch, with status and timestamps.
+- `scrape_run`: one retailer's run within a batch, with status, timestamps,
+  and error details. A batch may be partial while an individual run is
+  succeeded or failed.
+- `snapshot`: one listing's price, package quantity/unit, required energy and
+  protein values, optional nutrients, nutrition basis/source, and stock state
+  as observed in a scrape run.
 
 Primary key IDs use incrementing identity values: `snapshot_id` is `bigint`,
-and all other IDs are `int`. Foreign key columns use the same type as the
-referenced ID. Non-key columns are prefixed with their table name;
-foreign keys use the referenced table's name, such as `product.retailer_id`
-referencing `retailer.retailer_id`. Products can optionally reference a
-normalized brand and category; deleting either lookup record leaves the
-product in place and clears its corresponding ID. The external product ID is
-not the database primary key; it is used with the retailer ID to identify a
-retailer-specific product when available. Products with snapshots cannot be
-deleted; mark them inactive to preserve their history.
+and all other IDs are `int`. Foreign keys use the referenced ID's type.
+Retailer listings are unique by `(retailer_id, retailer_listing_external_id)`
+when the external ID is present; when it is absent, they are unique by
+`(retailer_id, retailer_listing_source_url)`. Snapshots are unique by
+`(retailer_listing_id, scrape_run_id)`. Composite foreign keys ensure a
+snapshot's listing and scrape run belong to the same retailer. Identity
+primary keys remain database-managed; status values and required data must be
+provided by ingestion, while timestamps and active/stock flags have defaults
+where defined.
 
-The database supplies no defaults for application data. ETL writes must
-explicitly provide required status flags and scrape-run timestamps/status.
-Count snapshots by querying `snapshot` for that run rather than storing
-duplicate counters. Identity primary keys remain database-managed.
-
-Create one `scrape_batch` for each coordinated scrape launch, then create one
+Create one `scrape_batch` for each coordinated scrape launch, then one
 `scrape_run` per retailer in that batch. Each retailer run can succeed or fail
-independently while retaining a shared ID for the overall launch.
+independently while retaining a shared ID for the overall launch. Snapshot
+counts can be derived by querying snapshots for the run.
 
 ### Data conventions and ingestion rules
 
@@ -128,22 +124,22 @@ independently while retaining a shared ID for the overall launch.
    other nutrient values may be unknown.
 2. Store package amount with an explicit unit (`g`, `ml`, or `each`); do not
    silently treat volume or count as weight.
-3. Match products by retailer and external ID first; if no ID is available or
-   no ID match exists, look up by retailer and canonical product URL before
-   inserting. This lets ETL add a newly discovered external ID or update a
-   changed URL without creating a duplicate.
-4. Upsert each product snapshot by `(product_id, scrape_run_id)` so its price
-   and nutrition values stay together. The product's retailer and scrape run's
-   retailer must match.
+3. Match listings by retailer and external ID when present; if no external ID
+  is present, use retailer and source URL. Normalize empty IDs to `NULL` and
+  canonicalize URLs before matching. The schema's URL uniqueness rule applies
+  only when the external ID is `NULL`.
+4. Upsert each snapshot by `(retailer_listing_id, scrape_run_id)` so its price
+  and nutrition values stay together. The listing's retailer and scrape run's
+  retailer must match.
 5. Use the associated run's start and finish timestamps as the collection
-   window for its snapshots. Keep the previous successful run visible while a
-   later run is running, partial, or failed. Only mark a run successful in the
-   same transaction that makes all its snapshots visible.
+  window for its snapshots. Keep the previous successful run visible while a
+  later run is running or failed. Only mark a run successful once its
+  snapshots are complete and visible.
 6. Keep source URLs so values can be investigated.
 7. Treat missing non-required nutrition data as unknown, not zero. Package
   quantity and unit are required for every snapshot. Do not write a snapshot
   if energy or protein is unavailable.
-   If a product is absent from a scrape, do not write a snapshot for it. Mark
+  If a product is absent from a scrape, do not write a snapshot for it. Mark
    it inactive only after it is absent from two consecutive successful runs
    for its retailer; failed runs do not count as missing observations. If it
    reappears, keep or reactivate it as active. Products omitted from the
@@ -151,37 +147,48 @@ independently while retaining a shared ID for the overall launch.
    before the two-run threshold deactivates them.
 8. Validate non-negative prices and nutrients and positive package quantities
    before writing.
-9. Read current dashboard data from `current_data`, which returns products
-   observed in each retailer's most recent successful run only, provided the
-   run finished within the last 24 hours. It does not fall back to older
-   snapshots for products omitted from that run; a retailer with no successful
-   run in that window contributes no rows. Running and failed attempts do not
-   replace the latest successful run; report their status separately when
-   needed.
+9. Read dashboard data from `current_data`, not directly from
+  `current_data_mat`. The materialized view contains in-stock snapshots from
+  each retailer's most recent successful run finished within the last 26
+  hours at the time it was refreshed. It does not fall back to an older
+  snapshot for a listing omitted from that run. The regular `current_data`
+  view applies the same 26-hour freshness check at query time, so expired rows
+  are hidden between refreshes. A retailer with no qualifying successful run
+  contributes no rows. Running and failed attempts do not replace the latest
+  successful run; report their status separately when needed.
 
-External product IDs are the preferred product identity. The schema has a
-partial unique index on `(retailer_id, product_external_id)` when the ID is
-present, and a separate fallback index on `(retailer_id, product_source_url)`
-when it is absent. ETL should normalize empty IDs to `NULL`, canonicalize
-product URLs, and use the matching partial-index conflict target.
+The schema restricts deletion of listings referenced by snapshots and of runs
+referenced by snapshots. Deactivate listings rather than deleting them so
+historical observations remain.
 
-Snapshots are restricted from deletion by either their product or scrape run;
-deactivate products rather than deleting them so historical observations remain.
+External IDs are the preferred listing identity. The schema enforces
+retailer-scoped uniqueness on `retailer_listing_external_id` when present and
+on `retailer_listing_source_url` when the external ID is `NULL`. ETL should
+normalize empty external IDs to `NULL` and canonicalize source URLs before
+matching.
 
 ## 5. Metrics
 
-- **Price per 100 g:** calculate from `snapshot_price` and
-  `snapshot_package_quantity` for gram-based packages; do not persist the
-  derived value.
-- **Protein per 100 g:** protein value after converting source nutrient basis
-  to 100 g.
-- **Protein per pound:** calculate `snapshot_protein_g` against the price per
-  100 g when both values use a per-100-g basis. Display the unit clearly
-  (g protein per GBP).
-- **Price versus category average:** product price metric compared with the
-  average of comparable products in its category and package basis.
-- **Best value:** rank products using protein per GBP, with transparent units
-  and filters so unlike package types are not compared incorrectly.
+The current `current_data_mat` view calculates `price_per_100_units` from
+package price and quantity, and `total_protein_grams_per_currency_unit` from
+the nutrition basis, package quantity, and price. The first metric can
+represent grams, millilitres, or eaches; it is not a like-for-like price per
+100 g metric. Treat comparisons across different package units as a known
+limitation until the metric is split or normalized. The regular `current_data`
+view exposes these columns with the same freshness filter.
+
+Planned dashboard metrics include:
+
+- **Price per 100 g:** calculate only for gram-based packages with compatible
+  units; do not persist the derived value.
+- **Protein per 100 g:** display only when the stored nutrition basis supports
+  it or can be reliably normalized.
+- **Protein per pound:** display with explicit currency and units, using
+  comparable price and protein values.
+- **Price versus category average:** compare only products with compatible
+  package units and category scope.
+- **Best value:** rank by protein per pound only when inputs are present and
+  comparable.
 
 Do not show computed metrics when inputs are absent, incomparable, or
 ambiguous. The exact best-value ranking and treatment of promotions should be
@@ -194,6 +201,8 @@ validated before presenting it as a recommendation.
 - Confirm product categories, retailer choice for the third supermarket, and
   PostgreSQL provider configuration.
 - Apply and smoke-test the schema in a development PostgreSQL database.
+- Remember that `database/initial_database_setup.sh` resets the database's
+  application tables and dependent objects before applying the schema.
 - Define environment variable names and secret handling without committing
   credentials.
 - Agree the normalized product and snapshot payloads.
@@ -244,6 +253,8 @@ data without access to scraper credentials.
   secrets.
 - Persist scrape-run status and counts; ensure failure and partial completion
   are visible in logs.
+- Refresh `current_data_mat` after scrape results are committed; the dashboard
+  reads the freshness-filtered `current_data` view.
 - Make jobs safe to retry and avoid duplicate daily snapshots.
 
 **Done when:** a scheduled run completes end-to-end, its output appears in the
@@ -285,8 +296,11 @@ retailer-specific breakage without compromising the rest of the service.
 ## 9. Suggested repository layout
 
 ```text
-supabase/
+database/
   schema.sql
+  initial_database_setup.sh
+  refresh_materialised_view.sh
+  refresh_materialised_view.sql
 scraper/
   core.py
   normalize.py
@@ -309,7 +323,7 @@ components that the MVP does not yet need.
 ## 10. Initial milestone and sequencing
 
 The first usable milestone is a small set of Morrisons products ingested into
-Supabase and visible in a simple dashboard with search, price, protein per
+PostgreSQL and visible in a simple dashboard with search, price, protein per
 100 g, and price per 100 g. Then add Sainsbury's and the selected third
 retailer, improve comparisons, and automate daily runs. Confirm retailer
 feasibility, data quality, and deployment requirements before expanding the

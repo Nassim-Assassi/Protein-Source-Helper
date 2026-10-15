@@ -30,5 +30,6 @@ psql \
   --port "$DATABASE_PORT" \
   --username "$DATABASE_USER" \
   --dbname "$DATABASE_NAME" \
+  --single-transaction \
   --set ON_ERROR_STOP=1 \
   --file "$SCHEMA_FILE"

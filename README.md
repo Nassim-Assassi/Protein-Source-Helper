@@ -45,18 +45,17 @@ Asda; the final third retailer remains to be selected.
 
 ## Data and comparison conventions
 
-The database is defined by [`database/schema.sql`](./database/schema.sql) and
-[`database/materialised_view.sql`](./database/materialised_view.sql). The base
-schema defines retailers, brands, categories, canonical products, retailer
-listings, snapshots, scrape batches, and retailer-specific scrape runs. One
-batch ID groups retailer runs launched together. Each snapshot combines one
-retailer listing's price and nutrition data collected in a single run. Primary
-key IDs use incrementing identity values: `snapshot_id` is `bigint`, and all
-other IDs are `int`. Foreign key columns use the same type as the referenced
-ID. A retailer listing optionally refers to a canonical product, brand, and
-category. Listing identity is retailer-specific: the retailer and external
-listing ID are used when available; otherwise, the retailer and listing source
-URL are used.
+The database, including its materialized view and dashboard view, is defined
+in [`database/schema.sql`](./database/schema.sql). It creates retailers,
+retailer-scoped categories, brands, canonical products, retailer listings,
+scrape batches, retailer-specific scrape runs, and snapshots. One batch ID
+groups retailer runs launched together. Each snapshot combines one retailer
+listing's price and nutrition data collected in a single run. Primary key IDs
+use incrementing identity values: `snapshot_id` is `bigint`, and all other IDs
+are `int`. A retailer listing refers to its retailer and canonical product,
+and may refer to a category from that retailer's taxonomy. Listing identity is
+retailer-specific: the retailer and external listing ID are unique when the
+ID is present; when it is absent, the retailer and source URL are unique.
 
 - Normalize nutrition values in the ETL before inserting snapshots. Store
   values per 100 g, per 100 ml, or per item, and record the basis in
@@ -69,8 +68,9 @@ URL are used.
   nutrient fields may remain unknown.
 - Every snapshot must include a positive package quantity and its unit (`g`,
   `ml`, or `each`). The base tables do not store derived comparison metrics;
-  `current_data_mat` calculates package-unit price and protein per currency
-  unit.
+  `current_data_mat` calculates price per 100 package units and total protein
+  grams per currency unit. Price per 100 package units can represent different
+  physical units and must not be compared across unlike units.
 - A snapshot row combines price and nutrition data and is unique per retailer
   listing per scrape run. Ingestion should upsert on
   `(retailer_listing_id, scrape_run_id)`; run timestamps provide the collection
@@ -81,7 +81,9 @@ URL are used.
   run. Running or failed attempts do not replace the latest successful data;
   show run status separately if the dashboard needs to communicate a newer
   attempt's progress or failure. Only active retailers and listings are
-  included.
+  included. `current_data` selects from this materialized view and checks the
+  26-hour freshness window at query time, so expired rows are hidden even
+  between refreshes.
 - Missing products are not recorded as snapshots. A product is marked inactive
   only after it is absent from two consecutive successful retailer runs;
   failed runs do not count. A product omitted from the latest successful run
@@ -95,15 +97,16 @@ URL are used.
 
 ## Repository contents
 
-- [`database/schema.sql`](./database/schema.sql) — PostgreSQL base tables,
-  constraints, and indexes. ETL code supplies required values explicitly.
-- [`database/materialised_view.sql`](./database/materialised_view.sql) —
-  creates `current_data_mat` and its indexes.
+- [`database/schema.sql`](./database/schema.sql) — full database definition:
+  tables, constraints, indexes, `current_data_mat`, and `current_data`.
 - [`database/initial_database_setup.sh`](./database/initial_database_setup.sh)
-  — applies the base schema using the database settings in the project-root
-  `.env` file.
-- [`database/create_materialsed_view.sh`](./database/create_materialsed_view.sh)
-  — creates or rebuilds the materialized view using the same `.env` settings.
+  — applies the full schema using the database settings in the project-root
+  `.env` file. This is a destructive reset that drops existing tables and
+  dependent objects; the SQL runs in one transaction so failures roll back.
+- [`database/refresh_materialised_view.sh`](./database/refresh_materialised_view.sh)
+  — refreshes `current_data_mat` concurrently using the same `.env` settings.
+- [`database/refresh_materialised_view.sql`](./database/refresh_materialised_view.sql)
+  — contains the concurrent refresh statement.
 - [`morrisons_mvp_links.txt`](./morrisons_mvp_links.txt) —
   Morrisons product links for initial exploration.
 - [`morrisons_product_categories.csv`](./morrisons_product_categories.csv) —
@@ -123,14 +126,16 @@ shell-compatible assignments for `DATABASE_HOST`, `DATABASE_PORT`,
 private and do not commit database credentials.
 
 1. Create a PostgreSQL database and configure the required values in `.env`.
-2. Apply the base tables and indexes by running
-   `sh database/initial_database_setup.sh` from the project root.
-3. After loading initial database records, create the materialized view by
-   running `sh database/create_materialsed_view.sh`.
+2. Initialize the database by running
+  `sh database/initial_database_setup.sh` from the project root. This drops
+  existing application tables and dependent objects before recreating the
+  schema, so do not run it to refresh data or against data you need to keep.
+3. After loading or updating snapshots, refresh the materialized data by
+  running `sh database/refresh_materialised_view.sh`. The dashboard should
+  query `public.current_data`; its 26-hour filter is evaluated on each query.
 
-The materialized-view script drops and recreates `current_data_mat`, cascading
-to dependent database objects. Rerun it when you intentionally need to rebuild
-the view; automatic refresh scheduling is not yet included.
+Refresh scheduling is planned for the scraper logic and is not yet automated
+by these database scripts.
 
 Configure separate database credentials and least-privilege permissions for
 the scraper and dashboard on the selected provider. Keep credentials in a

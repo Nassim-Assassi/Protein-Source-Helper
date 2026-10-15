@@ -4,7 +4,7 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 PROJECT_DIR=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 ENV_FILE="$PROJECT_DIR/.env"
-SCHEMA_FILE="$SCRIPT_DIR/materialised_view.sql"
+SCHEMA_FILE="$SCRIPT_DIR/refresh_materialised_view.sql"
 
 if [ ! -f "$ENV_FILE" ]; then
   printf 'Missing environment file: %s\n' "$ENV_FILE" >&2
