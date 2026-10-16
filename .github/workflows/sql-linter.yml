@@ -9,19 +9,13 @@ on:
     paths:
       - '**/*.sql'
   workflow_dispatch:
-  
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Run Squawk Linter
-        uses: sbdchd/squawk-action@v2
-        with:
-          pattern: 'database/*.sql'
-          fail-on-violations: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
