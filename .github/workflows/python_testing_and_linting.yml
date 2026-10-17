@@ -21,8 +21,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
 
-      - name: install dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
@@ -33,4 +35,4 @@ jobs:
 
       - name: Run pytest
         run: |
-          pytest --disable-warnings -q
+          pytest --disable-warnings
