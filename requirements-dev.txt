@@ -1,1 +1,4 @@
 sqlfluff
+pylint
+pytest
+-r scrapers/requirements.txt
