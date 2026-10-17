@@ -1,6 +1,4 @@
 name: Python Testing and Linting Workflow
-
-name: SQL Linter Workflow
 on:
   push:
     branches:
