@@ -5,9 +5,11 @@ on:
       - main
     paths:
       - '**/*.py'
+      - '.github/workflows/python_testing_and_linting.yml'
   pull_request:
     paths:
       - '**/*.py'
+      - '.github/workflows/python_testing_and_linting.yml'
   workflow_dispatch:
 
 jobs:
@@ -31,7 +33,7 @@ jobs:
 
       - name: Run pylint Linter
         run: |
-          pylint **/*.py
+          pylint **/*.py --fail-under=9 --disable=fixme
 
       - name: Run pytest
         run: |

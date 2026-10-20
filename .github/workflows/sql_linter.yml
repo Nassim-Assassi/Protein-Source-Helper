@@ -5,9 +5,11 @@ on:
       - main
     paths:
       - '**/*.sql'
+      - '.github/workflows/sql_linter.yml'
   pull_request:
     paths:
       - '**/*.sql'
+      - '.github/workflows/sql_linter.yml'
   workflow_dispatch:
 
 jobs:
