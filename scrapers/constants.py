@@ -1,3 +1,7 @@
+"""
+Constants for the scrapers module.
+"""
+
 PRODUCT_COLUMNS = (
     "listing_name",
     "source_url",

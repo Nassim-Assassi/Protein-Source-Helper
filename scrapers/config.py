@@ -1,3 +1,7 @@
+"""
+General configuration for the scrapers module, including database settings.
+"""
+
 from __future__ import annotations
 
 import os

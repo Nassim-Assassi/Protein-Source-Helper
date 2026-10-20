@@ -1,4 +1,9 @@
+"""
+Represents the configuration for a retailer, including its stable display name and website URL.
+"""
+
 from dataclasses import dataclass
+
 
 @dataclass(frozen=True, slots=True)
 class RetailerConfig:
