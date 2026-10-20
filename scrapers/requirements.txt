@@ -1,5 +1,6 @@
 psycopg[binary]
 pandas
+python-dotenv
 bs4
 playwright
 requests
