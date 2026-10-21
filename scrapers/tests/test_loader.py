@@ -4,7 +4,9 @@ import pandas as pd
 import pytest
 
 from scrapers.constants import PRODUCT_COLUMNS
+from scrapers.config import Config
 from scrapers.loader.load import (
+    _connect,
     _resolve_brand_id,
     _resolve_canonical_product_id,
     load_scrape,
@@ -106,6 +108,12 @@ class TestLoadScrape:
             }
         )
         return pd.DataFrame([row], columns=PRODUCT_COLUMNS)
+
+    def test_connect_is_blocked_in_tests(self) -> None:
+        with pytest.raises(
+            AssertionError, match="Tests must not connect to PostgreSQL"
+        ):
+            _connect(Config)
 
     def test_load_scrape_runs_in_transaction(self) -> None:
         connection = MagicMock()

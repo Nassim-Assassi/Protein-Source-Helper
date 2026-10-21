@@ -37,16 +37,15 @@ class Config:
         if cls._is_already_loaded():
             return
 
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            cls._load_from_env_vars()
+            return
+
         env_path = Path(__file__).resolve().parent.parent / ".env"
         if env_path.exists():
             cls._load_from_env(env_path)
         elif cls._env_vars_available():
             cls._load_from_env_vars()
-        elif os.environ.get("PYTEST_CURRENT_TEST"):
-            raise RuntimeError(
-                "Database config is not set for pytest; mock Config settings "
-                "or provide all DATABASE_* environment variables."
-            )
         else:
             cls._load_from_env_vars()
 
@@ -81,6 +80,9 @@ class Config:
             )
         for setting in cls._REQUIRED_SETTINGS:
             setattr(cls, setting, os.environ[setting])
+
+
+Config.load()
 
 
 # Load the config when the module is imported to ensure settings are available.
