@@ -16,7 +16,7 @@ from scrapers.logger_setup import logger
 
 BASE_URL = "https://groceries.morrisons.com"
 EXCLUDED_CATEGORY_SLUGS = {
-    "drinks"
+    "drinks",
     "baby-toddler",
     "events-inspiration-ways-to-save",
     "health-wellbeing-medicines",
