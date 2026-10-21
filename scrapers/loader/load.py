@@ -46,6 +46,15 @@ def _connect(config: type[Config]) -> psycopg.Connection[Any]:
     )
 
 
+def _fetch_required_id(cursor: Cursor[Any], lookup_label: str, query: str, params: tuple[Any, ...]) -> int:
+    """Run a lookup query and raise a clear error when it returns no row."""
+    cursor.execute(query, params)
+    result = cursor.fetchone()
+    if result is None or result[0] is None:
+        raise RuntimeError(f"No {lookup_label} row found for query: {query}")
+    return result[0]
+
+
 def _resolve_brand_id(cursor: Cursor[Any], brand_name: str) -> tuple[int, bool]:
     """Resolve a brand by name, inserting it if necessary. Return its ID and whether it was created."""
     cursor.execute(
@@ -60,11 +69,12 @@ def _resolve_brand_id(cursor: Cursor[Any], brand_name: str) -> tuple[int, bool]:
     result = cursor.fetchone()
     if result is not None:
         return result[0], True
-    cursor.execute(
+    return _fetch_required_id(
+        cursor,
+        "brand",
         "SELECT brand_id FROM public.brand WHERE brand_name = %s",
         (brand_name,),
-    )
-    return cursor.fetchone()[0], False
+    ), False
 
 
 def _resolve_canonical_product_id(
@@ -77,39 +87,11 @@ def _resolve_canonical_product_id(
     """Resolve by GTIN when present; otherwise match or create a retailer-scoped product.
     Return its ID and whether it was created.
     """
-    if barcode_gtin is not None:
-        cursor.execute(
-            """
-            SELECT canonical_product_id
-            FROM public.canonical_product
-            WHERE barcode_gtin = %s
-            """,
-            (barcode_gtin,),
-        )
-        canonical_product_name = retailer_listing_name
-    else:
-        canonical_product_name = f"{retailer_name}_{retailer_listing_name}"
-        cursor.execute(
-            """
-            SELECT canonical_product_id
-            FROM public.canonical_product
-            WHERE canonical_product_name = %s AND barcode_gtin IS NULL
-            """,
-            (canonical_product_name,),
-        )
-    result = cursor.fetchone()
-    if result is not None:
-        if barcode_gtin is not None and brand_id is not None:
-            cursor.execute(
-                """
-                UPDATE public.canonical_product
-                SET brand_id = %s
-                WHERE canonical_product_id = %s AND brand_id IS NULL
-                """,
-                (brand_id, result[0]),
-            )
-        return result[0], False
-
+    canonical_product_name = (
+        retailer_listing_name
+        if barcode_gtin is not None
+        else f"{retailer_name}_{retailer_listing_name}"
+    )
     cursor.execute(
         """
         INSERT INTO public.canonical_product (
@@ -125,39 +107,34 @@ def _resolve_canonical_product_id(
     if result is not None:
         return result[0], True
 
-    if barcode_gtin is not None:
-        cursor.execute(
-            """
+    match_condition = (
+        "barcode_gtin = %s"
+        if barcode_gtin is not None
+        else "canonical_product_name = %s AND barcode_gtin IS NULL"
+    )
+    match_value = barcode_gtin or canonical_product_name
+    if brand_id is None:
+        query = f"""
             SELECT canonical_product_id
             FROM public.canonical_product
-            WHERE barcode_gtin = %s
-            """,
-            (barcode_gtin,),
-        )
-        result = cursor.fetchone()
-        if result is not None:
-            if brand_id is not None:
-                cursor.execute(
-                    """
-                    UPDATE public.canonical_product
-                    SET brand_id = %s
-                    WHERE canonical_product_id = %s AND brand_id IS NULL
-                    """,
-                    (brand_id, result[0]),
-                )
-            return result[0], False
-        raise RuntimeError(
-            "Canonical product insert conflicted without a GTIN match")
+            WHERE {match_condition}
+            """
+        params = (match_value,)
+    else:
+        query = f"""
+            UPDATE public.canonical_product
+            SET brand_id = COALESCE(brand_id, %s)
+            WHERE {match_condition}
+            RETURNING canonical_product_id
+            """
+        params = (brand_id, match_value)
+    cursor.execute(query, params)
 
-    cursor.execute(
-        """
-        SELECT canonical_product_id
-        FROM public.canonical_product
-        WHERE canonical_product_name = %s AND barcode_gtin IS NULL
-        """,
-        (canonical_product_name,),
-    )
-    return cursor.fetchone()[0], False
+    result = cursor.fetchone()
+    if result is None:
+        raise RuntimeError(
+            "Canonical product insert conflicted without a matching row")
+    return result[0], False
 
 
 def _resolve_retailer_category_id(
@@ -177,15 +154,16 @@ def _resolve_retailer_category_id(
     result = cursor.fetchone()
     if result is not None:
         return result[0], True
-    cursor.execute(
+    return _fetch_required_id(
+        cursor,
+        "retailer category",
         """
         SELECT retailer_category_id
         FROM public.retailer_category
         WHERE retailer_id = %s AND retailer_category_name = %s
         """,
         (retailer_id, category_name),
-    )
-    return cursor.fetchone()[0], False
+    ), False
 
 
 def _resolve_retailer_id(cursor: Cursor[Any], retailer: RetailerConfig) -> int:
@@ -202,11 +180,12 @@ def _resolve_retailer_id(cursor: Cursor[Any], retailer: RetailerConfig) -> int:
     result = cursor.fetchone()
     if result is not None:
         return result[0]
-    cursor.execute(
+    return _fetch_required_id(
+        cursor,
+        "retailer",
         "SELECT retailer_id FROM public.retailer WHERE retailer_name = %s",
         (retailer.name,),
     )
-    return cursor.fetchone()[0]
 
 
 def _resolve_retailer_listing_id(
@@ -271,7 +250,12 @@ def _resolve_retailer_listing_id(
             """,
             (*listing_fields[:2], retailer_id, *listing_fields[2:]),
         )
-    return cursor.fetchone()[0]
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        raise RuntimeError(
+            "Failed to resolve retailer listing id after insert or update"
+        )
+    return row[0]
 
 
 def _create_scrape_run(
@@ -288,7 +272,12 @@ def _create_scrape_run(
         """,
         (scrape_batch_id, retailer_id),
     )
-    return cursor.fetchone()[0]
+    row = cursor.fetchone()
+    if row is None or row[0] is None:
+        raise RuntimeError(
+            "Failed to create scrape run for retailer batch"
+        )
+    return row[0]
 
 
 def _row_value(row: dict[str, Any], column: str) -> Any:
@@ -351,7 +340,7 @@ def _load_snapshot(
 
 
 def load_scrape(
-    cursor: Cursor[Any],
+    connection: psycopg.Connection[Any],
     scrape_batch_id: int,
     retailer: RetailerConfig,
     products: pd.DataFrame,
@@ -373,75 +362,77 @@ def load_scrape(
         if invalid_values.any():
             raise ValueError(f"Product {column} values must not be empty")
 
-    retailer_id = _resolve_retailer_id(cursor, retailer)
-    scrape_run_id = _create_scrape_run(cursor, scrape_batch_id, retailer_id)
-    loaded_count = 0
-    new_brand_count = 0
-    new_product_count = 0
-    new_retailer_category_count = 0
+    with connection.transaction(), connection.cursor() as cursor:
+        retailer_id = _resolve_retailer_id(cursor, retailer)
+        scrape_run_id = _create_scrape_run(
+            cursor, scrape_batch_id, retailer_id)
+        loaded_count = 0
+        new_brand_count = 0
+        new_product_count = 0
+        new_retailer_category_count = 0
 
-    for row in products.loc[:, list(PRODUCT_COLUMNS)].to_dict(orient="records"):
-        listing_name = _row_value(row, "listing_name")
-        source_url = _row_value(row, "source_url")
-        brand_name = _row_value(row, "brand_name")
-        barcode_gtin = _row_value(row, "barcode_gtin")
-        if barcode_gtin is not None:
-            barcode_gtin = str(barcode_gtin).strip() or None
-        category_name = _row_value(row, "category_name")
+        for row in products.loc[:, list(PRODUCT_COLUMNS)].to_dict(orient="records"):
+            listing_name = _row_value(row, "listing_name")
+            source_url = _row_value(row, "source_url")
+            brand_name = _row_value(row, "brand_name")
+            barcode_gtin = _row_value(row, "barcode_gtin")
+            if barcode_gtin is not None:
+                barcode_gtin = str(barcode_gtin).strip() or None
+            category_name = _row_value(row, "category_name")
 
-        brand_id = None
-        if brand_name:
-            brand_id, brand_created = _resolve_brand_id(
-                cursor, str(brand_name))
-            new_brand_count += brand_created
+            brand_id = None
+            if brand_name:
+                brand_id, brand_created = _resolve_brand_id(
+                    cursor, str(brand_name))
+                new_brand_count += brand_created
 
-        canonical_product_id, product_created = _resolve_canonical_product_id(
-            cursor,
-            retailer.name,
-            str(listing_name),
-            barcode_gtin,
-            brand_id,
-        )
-        new_product_count += product_created
-
-        retailer_category_id = None
-        if category_name:
-            retailer_category_id, category_created = _resolve_retailer_category_id(
-                cursor, retailer_id, str(category_name)
+            canonical_product_id, product_created = _resolve_canonical_product_id(
+                cursor,
+                retailer.name,
+                str(listing_name),
+                barcode_gtin,
+                brand_id,
             )
-            new_retailer_category_count += category_created
+            new_product_count += product_created
 
-        external_id = _row_value(row, "external_id")
-        image_url = _row_value(row, "image_url")
-        retailer_listing_id = _resolve_retailer_listing_id(
-            cursor,
-            retailer_id,
-            canonical_product_id,
-            retailer_category_id,
-            str(external_id) if external_id is not None else None,
-            str(listing_name),
-            str(source_url),
-            str(image_url) if image_url is not None else None,
+            retailer_category_id = None
+            if category_name:
+                retailer_category_id, category_created = _resolve_retailer_category_id(
+                    cursor, retailer_id, str(category_name)
+                )
+                new_retailer_category_count += category_created
+
+            external_id = _row_value(row, "external_id")
+            image_url = _row_value(row, "image_url")
+            retailer_listing_id = _resolve_retailer_listing_id(
+                cursor,
+                retailer_id,
+                canonical_product_id,
+                retailer_category_id,
+                str(external_id) if external_id is not None else None,
+                str(listing_name),
+                str(source_url),
+                str(image_url) if image_url is not None else None,
+            )
+
+            if _load_snapshot(
+                cursor, retailer_id, retailer_listing_id, scrape_run_id, row
+            ):
+                loaded_count += 1
+
+        cursor.execute(
+            """
+            UPDATE public.scrape_run
+            SET scrape_run_status = 'succeeded',
+                scrape_run_finished_at = clock_timestamp()
+            WHERE scrape_run_id = %s
+            """,
+            (scrape_run_id,),
         )
 
-        if _load_snapshot(
-            cursor, retailer_id, retailer_listing_id, scrape_run_id, row
-        ):
-            loaded_count += 1
-
-    cursor.execute(
-        """
-        UPDATE public.scrape_run
-        SET scrape_run_status = 'succeeded',
-            scrape_run_finished_at = clock_timestamp()
-        WHERE scrape_run_id = %s
-        """,
-        (scrape_run_id,),
-    )
-
-    return LoadResult(
-        loaded_count=loaded_count,
-        new_brand_count=new_brand_count,
-        new_product_count=new_product_count,
-        new_retailer_category_count=new_retailer_category_count,
-    )
+        return LoadResult(
+            loaded_count=loaded_count,
+            new_brand_count=new_brand_count,
+            new_product_count=new_product_count,
+            new_retailer_category_count=new_retailer_category_count,
+        )
