@@ -1,0 +1,154 @@
+name: Scrapers Batch Workflow
+
+on:
+  schedule:
+    - cron: '0 */3 * * *' # Runs every 3 hours
+  workflow_dispatch: # Allows you to run it manually anytime
+
+env:
+      DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
+      DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
+      DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+      DATABASE_USER: ${{ secrets.DATABASE_USER }}
+      DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+
+jobs:
+  validate_retailers:
+    runs-on: ubuntu-latest
+    outputs:
+      retailers: ${{ steps.validate.outputs.retailers }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate retailer configuration
+        id: validate
+        env:
+          RETAILERS_JSON: ${{ vars.RETAILERS }}
+        run: |
+          if ! jq -e 'type == "array" and length > 0' <<< "$RETAILERS_JSON" >/dev/null; then
+            echo "::error::vars.RETAILERS must be a non-empty JSON array."
+            exit 1
+          fi
+
+          echo "retailers=$(jq -c . <<< "$RETAILERS_JSON")" >> "$GITHUB_OUTPUT"
+
+  initiate_batch:
+    needs: validate_retailers
+    runs-on: ubuntu-latest
+    outputs:
+      batch_id: ${{ steps.batch.outputs.batch_id }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create scrape batch
+        id: batch
+        env:
+          PGPASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+        run: |
+          batch_id=$(psql -X -q -t -A -v ON_ERROR_STOP=1 \
+            -h "${{ secrets.DATABASE_HOST }}" \
+            -p "$DATABASE_PORT" \
+            -U "${{ secrets.DATABASE_USER }}" \
+            -d "${{ secrets.DATABASE_NAME }}" \
+            -f database/initiate_scrape_batch.sql)
+          echo "batch_id=$batch_id" >> "$GITHUB_OUTPUT"
+          
+  scrape_retailer:
+    needs: [validate_retailers, initiate_batch]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        retailer: ${{ fromJSON(needs.validate_retailers.outputs.retailers || '["validation-failed"]') }}
+    env:
+      RETAILER_NAME: ${{ matrix.retailer.name }}
+      RETAILER_URL: ${{ matrix.retailer.url }}
+      BATCH_ID: ${{ needs.initiate_batch.outputs.batch_id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: scrapers/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scrapers/requirements.txt
+
+      - name: Run ${{ matrix.retailer.name }} scraper
+        run: >-
+          python -m scrapers.orchestrators.retailer_etl
+          --batch-id "$BATCH_ID"
+          --retailer-name "$RETAILER_NAME"
+          --retailer-url "$RETAILER_URL"
+
+  finalise_batch:
+    needs: [validate_retailers, initiate_batch, scrape_retailer]
+    if: ${{ always() && needs.initiate_batch.result == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      BATCH_ID: ${{ needs.initiate_batch.outputs.batch_id }}
+      RETAILERS_JSON: ${{ needs.validate_retailers.outputs.retailers }}
+      PGPASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Finalise scrape batch
+        run: |
+          expected_retailer_count=$(jq 'length' <<< "$RETAILERS_JSON")
+          successful_retailer_count=$(psql -X -q -t -A -v ON_ERROR_STOP=1 \
+            -h "${{ secrets.DATABASE_HOST }}" \
+            -p "$DATABASE_PORT" \
+            -U "${{ secrets.DATABASE_USER }}" \
+            -d "${{ secrets.DATABASE_NAME }}" \
+            -v batch_id="$BATCH_ID" \
+            -c "SELECT count(DISTINCT retailer_id) FROM public.scrape_run WHERE scrape_batch_id = :batch_id AND scrape_run_status = 'succeeded';")
+
+          if (( expected_retailer_count > 0 && successful_retailer_count == expected_retailer_count )); then
+            batch_status="succeeded"
+            error_message=""
+          elif (( successful_retailer_count > 0 )); then
+            batch_status="partial"
+            error_message="$successful_retailer_count of $expected_retailer_count retailer scrapes succeeded"
+          else
+            batch_status="failed"
+            error_message="0 of $expected_retailer_count retailer scrapes succeeded"
+          fi
+
+          psql -X -q -v ON_ERROR_STOP=1 \
+            -h "${{ secrets.DATABASE_HOST }}" \
+            -p "$DATABASE_PORT" \
+            -U "${{ secrets.DATABASE_USER }}" \
+            -d "${{ secrets.DATABASE_NAME }}" \
+            -f database/finalise_scrape_batch.sql \
+            -v batch_id="$BATCH_ID" \
+            -v batch_status="$batch_status" \
+            -v error_message="$error_message"
+  
+  refresh_materialized_view:
+    needs: finalise_batch
+    if: ${{ always() && needs.finalise_batch.result == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      PGPASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Refresh materialised view
+        run: |
+          psql -X -q -v ON_ERROR_STOP=1 \
+            -h "${{ secrets.DATABASE_HOST }}" \
+            -p "$DATABASE_PORT" \
+            -U "${{ secrets.DATABASE_USER }}" \
+            -d "${{ secrets.DATABASE_NAME }}" \
+            -f database/refresh_materialised_view.sql
+
