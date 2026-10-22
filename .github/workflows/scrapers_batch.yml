@@ -112,7 +112,7 @@ jobs:
             -p "$DATABASE_PORT" \
             -U "${{ secrets.DATABASE_USER }}" \
             -d "${{ secrets.DATABASE_NAME }}" \
-            -c "SELECT count(DISTINCT retailer_id) FROM public.scrape_run WHERE scrape_batch_id = $BATCH_ID AND scrape_run_status = 'succeeded';"
+            -c "SELECT count(DISTINCT retailer_id) FROM public.scrape_run WHERE scrape_batch_id = $BATCH_ID AND scrape_run_status = 'succeeded';")
 
           if (( expected_retailer_count > 0 && successful_retailer_count == expected_retailer_count )); then
             batch_status="succeeded"
@@ -134,7 +134,7 @@ jobs:
             -v batch_id="$BATCH_ID" \
             -v batch_status="$batch_status" \
             -v error_message="$error_message"
-  
+        
   refresh_materialized_view:
     needs: finalise_batch
     if: ${{ always() && needs.finalise_batch.result == 'success' }}
