@@ -121,7 +121,6 @@ class TestLoadScrape:
 
         with (
             patch("scrapers.loader.load._resolve_retailer_id", return_value=1),
-            patch("scrapers.loader.load._create_scrape_run", return_value=2),
             patch("scrapers.loader.load._resolve_brand_id",
                   return_value=(10, False)),
             patch(
@@ -148,6 +147,10 @@ class TestLoadScrape:
         connection.transaction.assert_called_once()
         connection.cursor.assert_called_once()
         assert result.loaded_count == 1
+        assert any(
+            "SET scrape_run_status = 'succeeded'" in call.args[0]
+            for call in cursor.execute.call_args_list
+        )
 
     def test_empty_products_fail_before_database_writes(self) -> None:
         connection = Mock()

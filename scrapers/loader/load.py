@@ -258,28 +258,6 @@ def _resolve_retailer_listing_id(
     return row[0]
 
 
-def _create_scrape_run(
-    cursor: Cursor[Any], scrape_batch_id: int, retailer_id: int
-) -> int:
-    """Create a running scrape run for a batch and retailer."""
-    cursor.execute(
-        """
-        INSERT INTO public.scrape_run (
-            scrape_batch_id, retailer_id, scrape_run_status
-        )
-        VALUES (%s, %s, 'running')
-        RETURNING scrape_run_id
-        """,
-        (scrape_batch_id, retailer_id),
-    )
-    row = cursor.fetchone()
-    if row is None or row[0] is None:
-        raise RuntimeError(
-            "Failed to create scrape run for retailer batch"
-        )
-    return row[0]
-
-
 def _row_value(row: dict[str, Any], column: str) -> Any:
     """Return a value from a row, converting NaN to None and extracting scalars."""
     value = row.get(column)
@@ -341,7 +319,7 @@ def _load_snapshot(
 
 def load_scrape(
     connection: psycopg.Connection[Any],
-    scrape_batch_id: int,
+    scrape_run_id: int,
     retailer: RetailerConfig,
     products: pd.DataFrame,
 ) -> LoadResult:
@@ -364,8 +342,6 @@ def load_scrape(
 
     with connection.transaction(), connection.cursor() as cursor:
         retailer_id = _resolve_retailer_id(cursor, retailer)
-        scrape_run_id = _create_scrape_run(
-            cursor, scrape_batch_id, retailer_id)
         loaded_count = 0
         new_brand_count = 0
         new_product_count = 0
