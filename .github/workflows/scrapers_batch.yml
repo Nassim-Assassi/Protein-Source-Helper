@@ -82,6 +82,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r scrapers/requirements.txt
 
+      - name: Install Playwright browsers and system dependencies
+        run: python -m playwright install --with-deps chromium
+
       - name: Run ${{ matrix.retailer.name }} scraper
         run: >-
           python -m scrapers.orchestrators.retailer_etl
