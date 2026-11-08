@@ -62,6 +62,28 @@ class TestTransformProducts:
         assert product["protein_g"] == Decimal("31.2")
         assert product["energy_kcal"] == Decimal("140")
 
+    def test_treats_less_than_nutrition_values_as_zero(self) -> None:
+        raw = self.raw_product(nutrition={
+            "calories": "<0.5 kcal",
+            "proteinContent": "<0.5 g",
+            "carbohydrateContent": "<0.5 g",
+            "sugarContent": "<0.5 g",
+            "fatContent": "<0.5 g",
+            "saturatedFatContent": "<0.5 g",
+            "fiberContent": "<0.5 g",
+            "sodiumContent": "<0.5 g",
+            "servingSize": "100g",
+        })
+        raw["nutrition_table"] = {"protein_g": "<0.5 g"}
+
+        product = transform_products([raw]).iloc[0]
+
+        for field in (
+            "energy_kcal", "protein_g", "carbohydrates_g", "sugars_g",
+            "fat_g", "saturates_g", "fibre_g", "salt_g",
+        ):
+            assert product[field] == Decimal("0")
+
     def test_normalizes_kilograms_and_litres(self) -> None:
         kilogram_product = self.raw_product(size="1.5kg")
         litre_product = self.raw_product(

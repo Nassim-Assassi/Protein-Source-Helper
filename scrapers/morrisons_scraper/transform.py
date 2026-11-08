@@ -57,11 +57,19 @@ def _decimal(value: object) -> Decimal | None:
         return None
 
 
+def _nutrition_decimal(value: object) -> Decimal | None:
+    if value is not None and re.match(r"\s*<\s*", str(value)):
+        return Decimal("0")
+    return _decimal(value)
+
+
 def _energy_kcal(value: object) -> Decimal | None:
     if value is None:
         return None
+    if re.match(r"\s*<\s*", str(value)):
+        return Decimal("0")
     match = re.search(r"([\d.,]+)\s*kcal", str(value), re.I)
-    return _decimal(match.group(1) if match else value)
+    return _nutrition_decimal(match.group(1) if match else value)
 
 
 def _package_quantity(
@@ -112,11 +120,11 @@ def _nutrition_values(
         values[field] = (
             _energy_kcal(raw_value)
             if field == "energy_kcal"
-            else _decimal(raw_value)
+            else _nutrition_decimal(raw_value)
         )
 
     if values["salt_g"] is None:
-        sodium = _decimal(schema_nutrition.get("sodiumContent"))
+        sodium = _nutrition_decimal(schema_nutrition.get("sodiumContent"))
         if sodium is not None:
             values["salt_g"] = sodium * Decimal("2.5")
     return values
