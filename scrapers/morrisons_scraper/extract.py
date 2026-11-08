@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from copy import deepcopy
 from collections.abc import Mapping
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit, urlunsplit
@@ -179,16 +180,62 @@ def _first_value(*values: object) -> str | None:
 
 def _nutrition_table(soup: BeautifulSoup) -> tuple[dict[str, str], str | None]:
     table = soup.find("table", class_=re.compile("nutrition", re.I))
-    if not table:
-        return {}, None
+    labels = {
+        "energy_kcal": ("energy",),
+        "protein_g": ("protein",),
+        "carbohydrates_g": ("carbohydrate",),
+        "sugars_g": ("of which sugars", "sugars", "sugar"),
+        "saturates_g": (
+            "of which saturates", "saturates", "saturated fat"
+        ),
+        "fat_g": ("fat",),
+        "fibre_g": ("fibre", "fiber"),
+        "salt_g": ("salt",),
+    }
 
-    header_row = table.find("tr")
-    headers = header_row.find_all(["th", "td"]) if header_row else []
-    basis_text = (
-        headers[1].get_text(" ", strip=True).lower()
-        if len(headers) > 1
-        else table.get_text(" ", strip=True).lower()
-    )
+    if table:
+        header_row = table.find("tr")
+        headers = header_row.find_all(["th", "td"]) if header_row else []
+        basis_text = (
+            headers[1].get_text(" ", strip=True).lower()
+            if len(headers) > 1
+            else table.get_text(" ", strip=True).lower()
+        )
+        rows = [
+            (
+                columns[0].get_text(" ", strip=True).lower(),
+                columns[1].get_text(" ", strip=True),
+            )
+            for row in table.find_all("tr")
+            if len(columns := row.find_all(["th", "td"])) >= 2
+        ]
+    else:
+        heading = soup.find(
+            lambda tag: tag.name in {"h2", "h3"}
+            and tag.get_text(" ", strip=True).lower() == "nutritional data"
+        )
+        content = heading.find_next_sibling() if heading else None
+        if not content:
+            return {}, None
+        content = deepcopy(content)
+        for line_break in content.find_all("br"):
+            line_break.replace_with("\n")
+        lines = [
+            re.sub(r"\s+", " ", line).strip()
+            for line in content.get_text("", strip=False).splitlines()
+        ]
+        lines = [line for line in lines if line]
+        basis_text = " ".join(lines[:4]).lower()
+        rows = []
+        for index, line in enumerate(lines):
+            if line.lower().startswith("energy"):
+                energy_text = " ".join(lines[index:index + 2])
+                energy = re.search(r"([\d.,]+)\s*kcal", energy_text, re.I)
+                if energy:
+                    rows.append(("energy", energy.group(1)))
+                continue
+            rows.append((line.lower(), line))
+
     if "100ml" in basis_text or "100 ml" in basis_text:
         basis = "per_100ml"
     elif "100g" in basis_text or "100 g" in basis_text:
@@ -198,29 +245,21 @@ def _nutrition_table(soup: BeautifulSoup) -> tuple[dict[str, str], str | None]:
     else:
         basis = None
 
-    labels = {
-        "energy_kcal": ("energy",),
-        "protein_g": ("protein",),
-        "carbohydrates_g": ("carbohydrate",),
-        "sugars_g": ("sugars", "sugar"),
-        "saturates_g": ("saturates", "saturated fat"),
-        "fat_g": ("fat",),
-        "fibre_g": ("fibre", "fiber"),
-        "salt_g": ("salt",),
-    }
     nutrition = {}
-    for row in table.find_all("tr"):
-        columns = row.find_all(["th", "td"])
-        if len(columns) < 2:
-            continue
-        label = columns[0].get_text(" ", strip=True).lower()
-        value = columns[1].get_text(" ", strip=True)
+    for label, value in rows:
         for field, terms in labels.items():
-            if any(label == term or label.startswith(f"{term} ") for term in terms):
+            if any(
+                label == term or label.startswith(f"{term} ")
+                for term in terms
+            ):
                 if field == "energy_kcal":
                     match = re.search(r"([\d.,]+)\s*kcal", value, re.I)
                     if match:
                         value = match.group(1)
+                elif not table:
+                    match = re.search(r"<\s*[\d.,]+|[\d.,]+", value)
+                    if match:
+                        value = match.group()
                 nutrition[field] = value
                 break
     return nutrition, basis
