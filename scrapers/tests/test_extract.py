@@ -165,3 +165,25 @@ class TestNutritionTable:
             "salt_g": "1.5",
         }
         assert basis == "per_100g"
+
+    def test_extracts_energy_when_kcal_value_follows_unit(self) -> None:
+        markup = """
+        <section>
+            <h2>Nutritional Data</h2>
+            <div>
+                <br/>Per 100g<br/>
+                Energy<br/>
+                kJ 1199<br/>
+                kcal 285<br/>
+                Fat (g) 6.90<br/>
+                Protein (g) 8.40
+            </div>
+        </section>
+        """
+
+        nutrition, basis = _nutrition_table(
+            BeautifulSoup(markup, "html.parser")
+        )
+
+        assert nutrition["energy_kcal"] == "285"
+        assert basis == "per_100g"

@@ -367,8 +367,20 @@ def _nutrition_table(
         rows = []
         for index, line in enumerate(lines):
             if line.lower().startswith("energy"):
-                energy_text = " ".join(lines[index:index + 2])
-                energy = re.search(r"([\d.,]+)\s*kcal", energy_text, re.I)
+                energy_lines = lines[index:index + 3]
+                kcal_line = next(
+                    (
+                        re.fullmatch(r"kcal\s*([\d.,]+)", candidate, re.I)
+                        for candidate in energy_lines[1:]
+                        if re.fullmatch(
+                            r"kcal\s*[\d.,]+", candidate, re.I
+                        )
+                    ),
+                    None,
+                )
+                energy = kcal_line or re.search(
+                    r"([\d.,]+)\s*kcal\b", " ".join(energy_lines), re.I
+                )
                 if energy:
                     rows.append(("energy", energy.group(1)))
                 continue
