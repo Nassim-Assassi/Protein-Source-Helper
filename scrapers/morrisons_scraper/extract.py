@@ -178,8 +178,35 @@ def _first_value(*values: object) -> str | None:
     return None
 
 
-def _nutrition_table(soup: BeautifulSoup) -> tuple[dict[str, str], str | None]:
-    table = soup.find("table", class_=re.compile("nutrition", re.I))
+def _nutrition_table(
+    soup: BeautifulSoup, product_name: str | None = None
+) -> tuple[dict[str, str], str | None]:
+    tables = soup.find_all("table", class_=re.compile("nutrition", re.I))
+    table = tables[0] if tables else None
+    if product_name and len(tables) > 1:
+        normalized_name = re.sub(r"[^a-z0-9]+", " ", product_name.lower())
+        for candidate in tables:
+            component_label = None
+            for sibling in candidate.previous_siblings:
+                if getattr(sibling, "name", None) == "table":
+                    break
+                label = (
+                    sibling.get_text(" ", strip=True)
+                    if hasattr(sibling, "get_text")
+                    else str(sibling).strip()
+                )
+                if label:
+                    component_label = label
+                    break
+            normalized_label = re.sub(
+                r"[^a-z0-9]+", " ", component_label.lower()
+            ).strip() if component_label else ""
+            if normalized_label and re.search(
+                rf"(?:^|\s){re.escape(normalized_label)}(?:\s|$)",
+                normalized_name,
+            ):
+                table = candidate
+                break
     labels = {
         "energy_kcal": ("energy",),
         "protein_g": ("protein",),
@@ -376,7 +403,7 @@ def _extract_product(
         image_meta = soup.find("meta", property="og:image")
         image = image_meta.get("content") if image_meta else None
 
-    nutrition_table, nutrition_basis = _nutrition_table(soup)
+    nutrition_table, nutrition_basis = _nutrition_table(soup, listing_name)
     availability = str(offers.get("availability", "")).lower()
     page_text = soup.get_text(" ", strip=True).lower()
     out_of_stock = "outofstock" in availability or any(

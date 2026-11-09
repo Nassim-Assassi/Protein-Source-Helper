@@ -4,6 +4,39 @@ from scrapers.morrisons_scraper.extract import _nutrition_table
 
 
 class TestNutritionTable:
+    def test_selects_product_component_table_when_multiple_are_present(
+        self,
+    ) -> None:
+        markup = """
+        <div>
+            Hot Honey:<br/>
+            <table class="nutrition">
+                <tr><th>Typical Values</th><th>Per 100ml</th></tr>
+                <tr><td>Energy</td><td>1377kJ / 324kcal</td></tr>
+                <tr><td>Protein</td><td>0g</td></tr>
+            </table>
+            <br/><br/>Pizza:<br/>
+            <table class="nutrition">
+                <tr>
+                    <th>Typical Values</th>
+                    <th>when heated according to instructions Per 100g</th>
+                    <th>Per 1/2 Pizza</th>
+                </tr>
+                <tr><td>Energy</td><td>1234kJ / 294kcal</td><td>623kcal</td></tr>
+                <tr><td>Protein</td><td>15.3g</td><td>32.4g</td></tr>
+            </table>
+        </div>
+        """
+
+        nutrition, basis = _nutrition_table(
+            BeautifulSoup(markup, "html.parser"),
+            "Zizzi Rustica Sticky Pig Pizza 443g",
+        )
+
+        assert nutrition["energy_kcal"] == "294"
+        assert nutrition["protein_g"] == "15.3g"
+        assert basis == "per_100g"
+
     def test_extracts_kcal_after_parenthesized_kj_value(self) -> None:
         markup = """
         <table class="nutrition">
