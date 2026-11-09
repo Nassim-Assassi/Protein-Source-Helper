@@ -4,6 +4,27 @@ from scrapers.morrisons_scraper.extract import _nutrition_table
 
 
 class TestNutritionTable:
+    def test_extracts_kcal_after_parenthesized_kj_value(self) -> None:
+        markup = """
+        <table class="nutrition">
+            <tr>
+                <th>Typical Values</th><th>Per 100g</th>
+                <th>1 serving (150g)</th>
+            </tr>
+            <tr><td>Energy, (kJ) kcal</td><td>(330) 79</td><td>(495) 119</td></tr>
+            <tr><td>Fat (g)</td><td>3.0</td><td>4.5</td></tr>
+            <tr><td>Protein (g)</td><td>9.0</td><td>14</td></tr>
+        </table>
+        """
+
+        nutrition, basis = _nutrition_table(
+            BeautifulSoup(markup, "html.parser")
+        )
+
+        assert nutrition["energy_kcal"] == "79"
+        assert nutrition["protein_g"] == "9.0"
+        assert basis == "per_100g"
+
     def test_extracts_nutrition_from_unit_and_basis_columns(self) -> None:
         markup = """
         <table class="nutrition">

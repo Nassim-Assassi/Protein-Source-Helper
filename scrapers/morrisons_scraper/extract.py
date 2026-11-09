@@ -311,15 +311,23 @@ def _nutrition_table(soup: BeautifulSoup) -> tuple[dict[str, str], str | None]:
 
     nutrition = {}
     for label, value in rows:
+        normalized_label = re.sub(r"[^a-z]+", " ", label).strip()
         for field, terms in labels.items():
             if any(
-                label == term or label.startswith(f"{term} ")
+                normalized_label == term
+                or normalized_label.startswith(f"{term} ")
                 for term in terms
             ):
                 if field == "energy_kcal":
                     match = re.search(r"([\d.,]+)\s*kcal", value, re.I)
                     if match:
                         value = match.group(1)
+                    elif table and re.search(r"\bkcal\b", normalized_label):
+                        match = re.search(
+                            r"\(\s*[\d.,]+\s*\)\s*([\d.,]+)", value
+                        )
+                        if match:
+                            value = match.group(1)
                 elif not table:
                     match = re.search(r"<\s*[\d.,]+|[\d.,]+", value)
                     if match:
