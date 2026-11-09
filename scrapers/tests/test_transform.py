@@ -140,6 +140,25 @@ class TestTransformProducts:
         assert product["package_unit"] == "g"
         assert product["nutrition_basis"] == "per_100g"
 
+    def test_calculates_package_mass_from_serving_count(self) -> None:
+        cake = self.raw_product(
+            name="Mr Kipling Standard Battenberg Cake Family Size Serves 8",
+            size=None,
+            description="With 8 servings per Battenberg",
+            nutrition={
+                "calories": "382 kcal",
+                "proteinContent": "4.8 g",
+                "servingSize": "100g",
+            },
+        )
+        cake["nutrition_table"] = {"serving_size_g": "32"}
+
+        product = transform_products([cake]).iloc[0]
+
+        assert product["package_quantity"] == Decimal("256")
+        assert product["package_unit"] == "g"
+        assert product["nutrition_basis"] == "per_100g"
+
     def test_uses_each_and_per_item_when_serving_weight_is_unknown(self) -> None:
         count_pack = self.raw_product(
             size="6 per pack",

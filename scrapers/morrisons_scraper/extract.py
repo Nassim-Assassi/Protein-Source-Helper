@@ -231,7 +231,9 @@ def _nutrition_table(
         ]
         for value in header_texts:
             if not re.search(
-                r"\beach\b|\bper\s+(?:item|serving|portion)\b", value
+                r"\beach\b|\bper\s+(?:item|serving|portion)\b|"
+                r"\bper\s+\d+\s*/\s*\d+",
+                value,
             ):
                 continue
             serving_match = re.search(

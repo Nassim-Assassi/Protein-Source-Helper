@@ -115,6 +115,16 @@ def _package_quantity(
             if quantity is not None and serving_weight is not None:
                 return quantity * serving_weight, "g"
             return quantity, "each"
+        servings_match = re.search(
+            r"\b(\d+(?:[.,]\d+)?)\s+(?:servings?|portions?)\s+per\b",
+            str(value or ""),
+            re.I,
+        )
+        if servings_match:
+            quantity = _decimal(servings_match.group(1))
+            serving_weight = _decimal(serving_size_g)
+            if quantity is not None and serving_weight is not None:
+                return quantity * serving_weight, "g"
         match = re.search(
             r"(\d+(?:[.,]\d+)?)\s*(kg|g|ml|l|litres?|liters?)\b",
             str(value or ""),

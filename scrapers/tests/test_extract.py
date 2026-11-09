@@ -187,3 +187,24 @@ class TestNutritionTable:
 
         assert nutrition["energy_kcal"] == "285"
         assert basis == "per_100g"
+
+    def test_extracts_weight_from_fractional_cake_serving_header(self) -> None:
+        markup = """
+        <table class="nutrition">
+            <tr>
+                <th>Typical Values</th>
+                <th>Per 100g:</th>
+                <th>Per 1/8th of a Cake (32g):</th>
+            </tr>
+            <tr><td>Energy</td><td>1611kJ (382kcal)</td><td>517kJ (123kcal)</td></tr>
+            <tr><td>Protein</td><td>4.8g</td><td>1.5g</td></tr>
+        </table>
+        """
+
+        nutrition, basis = _nutrition_table(
+            BeautifulSoup(markup, "html.parser")
+        )
+
+        assert nutrition["serving_size_g"] == "32"
+        assert nutrition["protein_g"] == "4.8g"
+        assert basis == "per_100g"
