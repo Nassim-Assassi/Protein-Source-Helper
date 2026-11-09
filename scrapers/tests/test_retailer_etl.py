@@ -90,7 +90,7 @@ class TestRunRetailerEtl:
                 retailer_etl,
                 "import_module",
                 side_effect=[extract_module, transform_module],
-            ),
+            ) as import_scraper,
             patch.object(retailer_etl, "_connect") as connect,
             patch.object(retailer_etl, "load_scrape") as load,
         ):
@@ -102,6 +102,10 @@ class TestRunRetailerEtl:
             )
 
         assert output_path == tmp_path / "morrisons_products.csv"
+        assert import_scraper.call_args_list == [
+            call("scrapers.morrisons_scraper.extract"),
+            call("scrapers.morrisons_scraper.transform"),
+        ]
         assert pd.read_csv(output_path).to_dict(orient="records") == [
             {"listing_name": "Product"}
         ]
@@ -112,7 +116,7 @@ class TestRunRetailerEtl:
 
     def test_rejects_retailer_without_a_scraper(self) -> None:
         missing_module = ModuleNotFoundError(
-            "No module", name="scrapers.Unknown_scraper"
+            "No module", name="scrapers.unknown_scraper"
         )
         with (
             patch.object(retailer_etl, "initiate_scrape_run", return_value=99),

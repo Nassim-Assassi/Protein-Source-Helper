@@ -53,8 +53,9 @@ def run_retailer_etl(
             raise ValueError(
                 "A batch ID is required unless --local_test is set")
         scrape_run_id = initiate_scrape_run(scrape_batch_id, retailer)
-    extract_module = f"scrapers.{retailer_name}_scraper.extract"
-    transform_module = f"scrapers.{retailer_name}_scraper.transform"
+    scraper_name = retailer_name.lower()
+    extract_module = f"scrapers.{scraper_name}_scraper.extract"
+    transform_module = f"scrapers.{scraper_name}_scraper.transform"
     try:
         extract_products_with_stats = import_module(
             extract_module
@@ -64,7 +65,7 @@ def run_retailer_etl(
         ).transform_products
     except ModuleNotFoundError as error:
         if error.name not in {
-            f"scrapers.{retailer_name}_scraper",
+            f"scrapers.{scraper_name}_scraper",
             extract_module,
             transform_module,
         }:
