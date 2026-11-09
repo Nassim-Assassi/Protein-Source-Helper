@@ -4,6 +4,53 @@ from scrapers.morrisons_scraper.extract import _nutrition_table
 
 
 class TestNutritionTable:
+    def test_selects_per_item_column_for_count_pack_without_weight(self) -> None:
+        markup = """
+        <table class="nutrition">
+            <tr>
+                <th>Typical Values</th>
+                <th>100g contains</th>
+                <th>Each swirl contains</th>
+            </tr>
+            <tr><td>Energy</td><td>300kcal</td><td>151kcal</td></tr>
+            <tr><td>Protein</td><td>7.7g</td><td>3.9g</td></tr>
+        </table>
+        """
+
+        nutrition, basis = _nutrition_table(
+            BeautifulSoup(markup, "html.parser"),
+            "St Pierre Brioche Swirls 6 Pack",
+            prefer_per_item=True,
+        )
+
+        assert nutrition["energy_kcal"] == "151"
+        assert nutrition["protein_g"] == "3.9g"
+        assert basis == "per_item"
+
+    def test_extracts_per_100g_and_each_serving_weight(self) -> None:
+        markup = """
+        <table class="nutrition">
+            <tr>
+                <th>Typical Values</th>
+                <th>100g contains</th>
+                <th>Each swirl (50g) contains</th>
+            </tr>
+            <tr><td>Energy</td><td>1264kJ</td><td>635kJ</td></tr>
+            <tr><td></td><td>300kcal</td><td>151kcal</td></tr>
+            <tr><td>Protein</td><td>7.7g</td><td>3.9g</td></tr>
+        </table>
+        """
+
+        nutrition, basis = _nutrition_table(
+            BeautifulSoup(markup, "html.parser"),
+            "St Pierre Brioche Swirls 6 Pack",
+        )
+
+        assert nutrition["energy_kcal"] == "300"
+        assert nutrition["protein_g"] == "7.7g"
+        assert nutrition["serving_size_g"] == "50"
+        assert basis == "per_100g"
+
     def test_selects_product_component_table_when_multiple_are_present(
         self,
     ) -> None:

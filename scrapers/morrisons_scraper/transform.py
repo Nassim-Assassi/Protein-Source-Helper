@@ -86,7 +86,9 @@ def _energy_kcal(value: object) -> Decimal | None:
 
 
 def _package_quantity(
-        product: Mapping[str, Any], listing_name: str | None
+    product: Mapping[str, Any],
+    listing_name: str | None,
+    serving_size_g: object = None,
 ) -> tuple[Decimal | None, str | None]:
     values = [product.get("weight"), product.get("size"),
               product.get("description")]
@@ -102,6 +104,17 @@ def _package_quantity(
                 "LTR": "l",
             }.get(str(unit).upper(), unit)
             value = f"{value.get('value', '')} {unit}"
+        pack_match = re.search(
+            r"(\d+(?:[.,]\d+)?)\s*(?:per\s+pack|pack)\b",
+            str(value or ""),
+            re.I,
+        )
+        if pack_match:
+            quantity = _decimal(pack_match.group(1))
+            serving_weight = _decimal(serving_size_g)
+            if quantity is not None and serving_weight is not None:
+                return quantity * serving_weight, "g"
+            return quantity, "each"
         match = re.search(
             r"(\d+(?:[.,]\d+)?)\s*(kg|g|ml|l|litres?|liters?)\b",
             str(value or ""),
@@ -150,12 +163,16 @@ def _nutrition_basis(
     nutrition = product.get("nutrition") or {}
     if value is None and isinstance(nutrition, Mapping):
         value = _first_value(nutrition.get("servingSize"))
-    normalized = (value or "").lower().replace(" ", "")
+    normalized = re.sub(r"[\s_]+", "", (value or "").lower())
     if "100ml" in normalized:
         return "per_100ml"
     if "100g" in normalized:
         return "per_100g"
-    if "peritem" in normalized or "perserving" in normalized:
+    if (
+        "peritem" in normalized
+        or "perserving" in normalized
+        or normalized.startswith("each")
+    ):
         return "per_item"
     return None
 
@@ -185,7 +202,9 @@ def _transform_product(raw: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(nutrition_table, Mapping):
         nutrition_table = {}
     nutrition = _nutrition_values(product, nutrition_table)
-    package_quantity, package_unit = _package_quantity(product, listing_name)
+    package_quantity, package_unit = _package_quantity(
+        product, listing_name, nutrition_table.get("serving_size_g")
+    )
     nutrition_basis = _nutrition_basis(raw.get("nutrition_basis"), product)
 
     row = {

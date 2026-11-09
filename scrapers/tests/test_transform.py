@@ -123,6 +123,39 @@ class TestTransformProducts:
         assert litre["package_quantity"] == Decimal("1500.0")
         assert litre["package_unit"] == "ml"
 
+    def test_calculates_count_pack_mass_from_serving_weight(self) -> None:
+        count_pack = self.raw_product(
+            size="6 per pack",
+            nutrition={
+                "calories": "300 kcal",
+                "proteinContent": "7.7 g",
+                "servingSize": "100g",
+            },
+        )
+        count_pack["nutrition_table"] = {"serving_size_g": "50"}
+
+        product = transform_products([count_pack]).iloc[0]
+
+        assert product["package_quantity"] == Decimal("300")
+        assert product["package_unit"] == "g"
+        assert product["nutrition_basis"] == "per_100g"
+
+    def test_uses_each_and_per_item_when_serving_weight_is_unknown(self) -> None:
+        count_pack = self.raw_product(
+            size="6 per pack",
+            nutrition={
+                "calories": "151 kcal",
+                "proteinContent": "3.9 g",
+                "servingSize": "per item",
+            },
+        )
+
+        product = transform_products([count_pack]).iloc[0]
+
+        assert product["package_quantity"] == Decimal("6")
+        assert product["package_unit"] == "each"
+        assert product["nutrition_basis"] == "per_item"
+
     def test_skips_invalid_rows_and_keeps_valid_products(self) -> None:
         valid = self.raw_product()
         invalid = self.raw_product()

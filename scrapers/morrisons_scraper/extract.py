@@ -179,7 +179,9 @@ def _first_value(*values: object) -> str | None:
 
 
 def _nutrition_table(
-    soup: BeautifulSoup, product_name: str | None = None
+    soup: BeautifulSoup,
+    product_name: str | None = None,
+    prefer_per_item: bool = False,
 ) -> tuple[dict[str, str], str | None]:
     tables = soup.find_all("table", class_=re.compile("nutrition", re.I))
     table = tables[0] if tables else None
@@ -220,19 +222,44 @@ def _nutrition_table(
         "salt_g": ("salt",),
     }
 
+    serving_size_g = None
     if table:
         header_row = table.find("tr")
         headers = header_row.find_all(["th", "td"]) if header_row else []
         header_texts = [
             cell.get_text(" ", strip=True).lower() for cell in headers
         ]
-        basis_index = next(
-            (
-                index for index, value in enumerate(header_texts)
-                if re.search(r"100\s*g", value)
-            ),
-            None,
-        )
+        for value in header_texts:
+            if not re.search(
+                r"\beach\b|\bper\s+(?:item|serving|portion)\b", value
+            ):
+                continue
+            serving_match = re.search(
+                r"\((\d+(?:[.,]\d+)?)\s*g\)", value
+            )
+            if serving_match:
+                serving_size_g = serving_match.group(1).replace(",", ".")
+                break
+        basis_index = None
+        if prefer_per_item and serving_size_g is None:
+            basis_index = next(
+                (
+                    index for index, value in enumerate(header_texts)
+                    if re.search(
+                        r"\beach\b|\bper\s+(?:item|serving|portion)\b",
+                        value,
+                    )
+                ),
+                None,
+            )
+        if basis_index is None:
+            basis_index = next(
+                (
+                    index for index, value in enumerate(header_texts)
+                    if re.search(r"100\s*g", value)
+                ),
+                None,
+            )
         if basis_index is None:
             basis_index = next(
                 (
@@ -299,6 +326,26 @@ def _nutrition_table(
                     amount = re.search(r"[\d.,]+", value)
                     if amount:
                         value = f"{amount.group()} kJ"
+            elif label.startswith("energy") and not re.search(
+                r"kcal\b", value, re.I
+            ):
+                next_columns = (
+                    table_rows[row_index + 1]
+                    if row_index + 1 < len(table_rows)
+                    else []
+                )
+                next_label = (
+                    next_columns[0].get_text(" ", strip=True)
+                    if next_columns
+                    else ""
+                )
+                next_value = (
+                    next_columns[basis_index].get_text(" ", strip=True)
+                    if basis_index < len(next_columns)
+                    else ""
+                )
+                if not next_label and re.search(r"kcal\b", next_value, re.I):
+                    value = next_value
             rows.append((label, value))
     else:
         heading = soup.find(
@@ -331,12 +378,16 @@ def _nutrition_table(
         basis = "per_100ml"
     elif "100g" in basis_text or "100 g" in basis_text:
         basis = "per_100g"
-    elif "per item" in basis_text or "per serving" in basis_text:
+    elif re.search(
+        r"\beach\b|\bper\s+(?:item|serving|portion)\b", basis_text
+    ):
         basis = "per_item"
     else:
         basis = None
 
     nutrition = {}
+    if serving_size_g is not None:
+        nutrition["serving_size_g"] = serving_size_g
     for label, value in rows:
         normalized_label = re.sub(r"[^a-z]+", " ", label).strip()
         for field, terms in labels.items():
@@ -403,7 +454,20 @@ def _extract_product(
         image_meta = soup.find("meta", property="og:image")
         image = image_meta.get("content") if image_meta else None
 
-    nutrition_table, nutrition_basis = _nutrition_table(soup, listing_name)
+    package_size = _first_value(
+        product.get("size"), product.get("weight"), listing_name
+    )
+    count_pack = bool(
+        package_size
+        and re.search(
+            r"\d+(?:[.,]\d+)?\s*(?:per\s+pack|pack)\b",
+            package_size,
+            re.I,
+        )
+    )
+    nutrition_table, nutrition_basis = _nutrition_table(
+        soup, listing_name, prefer_per_item=count_pack
+    )
     availability = str(offers.get("availability", "")).lower()
     page_text = soup.get_text(" ", strip=True).lower()
     out_of_stock = "outofstock" in availability or any(
