@@ -196,19 +196,83 @@ def _nutrition_table(soup: BeautifulSoup) -> tuple[dict[str, str], str | None]:
     if table:
         header_row = table.find("tr")
         headers = header_row.find_all(["th", "td"]) if header_row else []
+        header_texts = [
+            cell.get_text(" ", strip=True).lower() for cell in headers
+        ]
+        basis_index = next(
+            (
+                index for index, value in enumerate(header_texts)
+                if re.search(r"100\s*g", value)
+            ),
+            None,
+        )
+        if basis_index is None:
+            basis_index = next(
+                (
+                    index for index, value in enumerate(header_texts)
+                    if re.search(r"100\s*ml", value)
+                ),
+                None,
+            )
+        if basis_index is None:
+            basis_index = next(
+                (
+                    index for index, value in enumerate(header_texts)
+                    if re.search(r"per\s+(?:item|serving|portion)", value)
+                ),
+                1 if len(headers) > 1 else 0,
+            )
         basis_text = (
-            headers[1].get_text(" ", strip=True).lower()
-            if len(headers) > 1
+            header_texts[basis_index]
+            if header_texts
             else table.get_text(" ", strip=True).lower()
         )
-        rows = [
-            (
-                columns[0].get_text(" ", strip=True).lower(),
-                columns[1].get_text(" ", strip=True),
-            )
-            for row in table.find_all("tr")
-            if len(columns := row.find_all(["th", "td"])) >= 2
+        table_rows = [
+            row.find_all(["th", "td"]) for row in table.find_all("tr")
         ]
+        unit_index = next(
+            (index for index, value in enumerate(header_texts)
+             if value == "unit"),
+            None,
+        )
+        rows = []
+        for row_index, columns in enumerate(table_rows[1:], start=1):
+            if len(columns) <= basis_index:
+                continue
+            label = columns[0].get_text(" ", strip=True).lower()
+            value = columns[basis_index].get_text(" ", strip=True)
+            if label.startswith("energy") and unit_index is not None:
+                unit = (
+                    columns[unit_index].get_text(" ", strip=True).lower()
+                    if unit_index < len(columns)
+                    else ""
+                )
+                next_columns = (
+                    table_rows[row_index + 1]
+                    if row_index + 1 < len(table_rows)
+                    else []
+                )
+                next_label = (
+                    next_columns[0].get_text(" ", strip=True)
+                    if next_columns
+                    else ""
+                )
+                next_unit = (
+                    next_columns[unit_index].get_text(
+                        " ", strip=True
+                    ).lower()
+                    if unit_index < len(next_columns)
+                    else ""
+                )
+                if not next_label and "kcal" in next_unit:
+                    value = next_columns[basis_index].get_text(
+                        " ", strip=True
+                    )
+                elif "kj" in unit:
+                    amount = re.search(r"[\d.,]+", value)
+                    if amount:
+                        value = f"{amount.group()} kJ"
+            rows.append((label, value))
     else:
         heading = soup.find(
             lambda tag: tag.name in {"h2", "h3"}
