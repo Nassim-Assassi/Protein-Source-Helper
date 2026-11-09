@@ -68,8 +68,21 @@ def _energy_kcal(value: object) -> Decimal | None:
         return None
     if re.match(r"\s*<\s*", str(value)):
         return Decimal("0")
-    match = re.search(r"([\d.,]+)\s*kcal", str(value), re.I)
-    return _nutrition_decimal(match.group(1) if match else value)
+    text = str(value)
+    kcal_match = re.search(r"([\d.,]+)\s*kcal\b", text, re.I)
+    if kcal_match:
+        return _nutrition_decimal(kcal_match.group(1))
+
+    match = re.search(r"([\d.,]+)\s*(kj|mj)\b", text, re.I)
+    if not match:
+        return _nutrition_decimal(value)
+
+    amount = _nutrition_decimal(match.group(1))
+    if amount is None:
+        return amount
+    kilojoules = amount * \
+        Decimal("1000") if match.group(2).lower() == "mj" else amount
+    return kilojoules / Decimal("4.184")
 
 
 def _package_quantity(

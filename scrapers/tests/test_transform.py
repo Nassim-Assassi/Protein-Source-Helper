@@ -62,6 +62,25 @@ class TestTransformProducts:
         assert product["protein_g"] == Decimal("31.2")
         assert product["energy_kcal"] == Decimal("140")
 
+    def test_converts_energy_units_to_kcal(self) -> None:
+        mj_product = self.raw_product(nutrition={
+            "calories": "1.68 MJ",
+            "proteinContent": "30.4 g",
+            "servingSize": "100g",
+        })
+        paired_product = self.raw_product(nutrition={
+            "calories": "1.68 MJ / 401 kcal",
+            "proteinContent": "30.4 g",
+            "servingSize": "100g",
+        })
+
+        mj_energy, paired_energy = transform_products(
+            [mj_product, paired_product]
+        )["energy_kcal"].tolist()
+
+        assert mj_energy == Decimal("1680") / Decimal("4.184")
+        assert paired_energy == Decimal("401")
+
     def test_treats_less_than_nutrition_values_as_zero(self) -> None:
         raw = self.raw_product(nutrition={
             "calories": "<0.5 kcal",
