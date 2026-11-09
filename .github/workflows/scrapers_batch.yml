@@ -1,9 +1,7 @@
 name: Scrapers Batch Workflow
 
 on:
-  schedule:
-    - cron: '0 */3 * * *' # Runs every 3 hours
-  workflow_dispatch: # Allows you to run it manually anytime
+   workflow_dispatch: # Allows you to run it manually anytime
 
 env:
       DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
