@@ -1,7 +1,9 @@
 """Run a retailer extract-transform-load pipeline for an existing batch."""
 
 import argparse
+import re
 from importlib import import_module
+from pathlib import Path
 from time import perf_counter
 
 from scrapers.config import Config
@@ -13,6 +15,10 @@ from scrapers.orchestrators.scrape_run_helpers import (
 )
 from scrapers.retailer_config import RetailerConfig
 
+LOCAL_TEST_OUTPUT_DIR = (
+    Path(__file__).resolve().parents[2] / "local_development"
+)
+
 
 def _format_duration(seconds: float) -> str:
     minutes, remaining_seconds = divmod(seconds, 60)
@@ -21,7 +27,11 @@ def _format_duration(seconds: float) -> str:
     return f"{remaining_seconds:.1f}s"
 
 
-def _mark_scrape_run_failed(scrape_run_id: int, error: Exception) -> None:
+def _mark_scrape_run_failed(
+    scrape_run_id: int | None, error: Exception
+) -> None:
+    if scrape_run_id is None:
+        return
     try:
         fail_scrape_run(scrape_run_id, str(error))
     except Exception:
@@ -30,11 +40,19 @@ def _mark_scrape_run_failed(scrape_run_id: int, error: Exception) -> None:
 
 
 def run_retailer_etl(
-    scrape_batch_id: int, retailer_name: str, retailer_url: str
-) -> LoadResult:
-    """Extract, transform, and load products for a retailer and batch."""
+    scrape_batch_id: int | None,
+    retailer_name: str,
+    retailer_url: str,
+    local_test: bool = False,
+) -> LoadResult | Path:
+    """Extract and transform products, then load them or save a local CSV."""
     retailer = RetailerConfig(name=retailer_name, url=retailer_url)
-    scrape_run_id = initiate_scrape_run(scrape_batch_id, retailer)
+    scrape_run_id = None
+    if not local_test:
+        if scrape_batch_id is None:
+            raise ValueError(
+                "A batch ID is required unless --local_test is set")
+        scrape_run_id = initiate_scrape_run(scrape_batch_id, retailer)
     extract_module = f"scrapers.{retailer_name}_scraper.extract"
     transform_module = f"scrapers.{retailer_name}_scraper.transform"
     try:
@@ -92,6 +110,18 @@ def run_retailer_etl(
                 f"No valid {retailer_name} products to load for this batch"
             )
 
+        if local_test:
+            retailer_slug = re.sub(
+                r"[^a-z0-9_-]+", "_", retailer_name.lower()
+            ).strip("_") or "retailer"
+            output_path = (
+                LOCAL_TEST_OUTPUT_DIR / f"{retailer_slug}_products.csv"
+            )
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            products.to_csv(output_path, index=False)
+            logger.info("Local test CSV saved to %s.", output_path)
+            return output_path
+
         logger.info("Starting load module for %s, batch %s.",
                     retailer_name, scrape_batch_id)
         started_at = perf_counter()
@@ -120,16 +150,30 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--batch-id",
         type=int,
-        required=True,
         help="ID of the existing scrape batch to load",
     )
     parser.add_argument("--retailer-name", required=True)
     parser.add_argument("--retailer-url", required=True)
+    parser.add_argument(
+        "--local_test",
+        action="store_true",
+        help="Scrape and save transformed products to a local CSV",
+    )
     args = parser.parse_args(argv)
 
+    if args.batch_id is None and not args.local_test:
+        parser.error("--batch-id is required unless --local_test is set")
+
     result = run_retailer_etl(
-        args.batch_id, args.retailer_name, args.retailer_url
+        args.batch_id,
+        args.retailer_name,
+        args.retailer_url,
+        local_test=args.local_test,
     )
+    if isinstance(result, Path):
+        print(f"Local test CSV saved to {result}")
+        return 0
+
     print(f"Batch {args.batch_id}: loaded {result.loaded_count} snapshots.")
     print(f"New brands: {result.new_brand_count}")
     print(f"New canonical products: {result.new_product_count}")

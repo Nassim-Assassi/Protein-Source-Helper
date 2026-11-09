@@ -68,6 +68,48 @@ class TestRunRetailerEtl:
         fail_run.assert_not_called()
         assert actual_result is result
 
+    def test_saves_csv_without_connecting_to_database(
+        self, tmp_path
+    ) -> None:
+        extraction = ExtractionResult([{"listing_name": "Product"}], 1, 0)
+        products = pd.DataFrame([{"listing_name": "Product"}])
+        extract_module = SimpleNamespace(
+            extract_products_with_stats=MagicMock(return_value=extraction)
+        )
+        transform_module = SimpleNamespace(
+            transform_products=MagicMock(return_value=products)
+        )
+
+        with (
+            patch.object(
+                retailer_etl, "LOCAL_TEST_OUTPUT_DIR", tmp_path
+            ),
+            patch.object(retailer_etl, "initiate_scrape_run") as initiate,
+            patch.object(retailer_etl, "fail_scrape_run") as fail_run,
+            patch.object(
+                retailer_etl,
+                "import_module",
+                side_effect=[extract_module, transform_module],
+            ),
+            patch.object(retailer_etl, "_connect") as connect,
+            patch.object(retailer_etl, "load_scrape") as load,
+        ):
+            output_path = retailer_etl.run_retailer_etl(
+                None,
+                "Morrisons",
+                "https://groceries.morrisons.com",
+                local_test=True,
+            )
+
+        assert output_path == tmp_path / "morrisons_products.csv"
+        assert pd.read_csv(output_path).to_dict(orient="records") == [
+            {"listing_name": "Product"}
+        ]
+        initiate.assert_not_called()
+        fail_run.assert_not_called()
+        connect.assert_not_called()
+        load.assert_not_called()
+
     def test_rejects_retailer_without_a_scraper(self) -> None:
         missing_module = ModuleNotFoundError(
             "No module", name="scrapers.Unknown_scraper"
@@ -142,7 +184,9 @@ class TestMain:
                 "--retailer-url", retailer_url,
             ])
 
-        run_etl.assert_called_once_with(42, "Morrisons", retailer_url)
+        run_etl.assert_called_once_with(
+            42, "Morrisons", retailer_url, local_test=False
+        )
         assert exit_code == 0
         assert capsys.readouterr().out.splitlines() == [
             "Batch 42: loaded 10 snapshots.",
@@ -150,3 +194,26 @@ class TestMain:
             "New canonical products: 3",
             "New retailer categories: 1",
         ]
+
+    def test_local_test_does_not_require_batch_id(
+        self, capsys, tmp_path
+    ) -> None:
+        retailer_url = "https://groceries.morrisons.com"
+        output_path = tmp_path / "morrisons_products.csv"
+
+        with patch.object(
+            retailer_etl, "run_retailer_etl", return_value=output_path
+        ) as run_etl:
+            exit_code = retailer_etl.main([
+                "--retailer-name", "Morrisons",
+                "--retailer-url", retailer_url,
+                "--local_test",
+            ])
+
+        run_etl.assert_called_once_with(
+            None, "Morrisons", retailer_url, local_test=True
+        )
+        assert exit_code == 0
+        assert capsys.readouterr().out == (
+            f"Local test CSV saved to {output_path}\n"
+        )
