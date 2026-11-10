@@ -208,3 +208,28 @@ class TestNutritionTable:
         assert nutrition["serving_size_g"] == "32"
         assert nutrition["protein_g"] == "4.8g"
         assert basis == "per_100g"
+
+    def test_selects_named_per_item_column_for_counted_product(self) -> None:
+        markup = """
+        <table class="nutrition">
+            <tr>
+                <th>Typical Values</th>
+                <th>Per 100g of product</th>
+                <th>Per average bagel (50g)</th>
+            </tr>
+            <tr><td>Energy</td><td>1142kJ</td><td>571kJ</td></tr>
+            <tr><td></td><td>272kcal</td><td>136kcal</td></tr>
+            <tr><td>Protein</td><td>10.5g</td><td>5.3g</td></tr>
+        </table>
+        """
+
+        nutrition, basis = _nutrition_table(
+            BeautifulSoup(markup, "html.parser"),
+            "Warburtons 6 Sesame Thin Bagels",
+        )
+
+        assert nutrition["energy_kcal"] == "136"
+        assert nutrition["protein_g"] == "5.3g"
+        assert nutrition["serving_size_g"] == "50"
+        assert nutrition["serving_unit"] == "bagel"
+        assert basis == "per_item"

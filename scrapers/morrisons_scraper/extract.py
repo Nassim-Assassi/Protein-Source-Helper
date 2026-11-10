@@ -178,6 +178,19 @@ def _first_value(*values: object) -> str | None:
     return None
 
 
+def _serving_unit(header: str) -> str | None:
+    match = re.search(
+        r"\b(?:per\s+(?:average\s+)?|each\s+)([a-z][a-z-]*)\b",
+        header,
+        re.I,
+    )
+    if not match or match.group(1).lower() in {
+        "item", "serving", "portion"
+    }:
+        return None
+    return match.group(1).lower()
+
+
 def _nutrition_table(
     soup: BeautifulSoup,
     product_name: str | None = None,
@@ -223,16 +236,31 @@ def _nutrition_table(
     }
 
     serving_size_g = None
+    serving_unit = None
+    counted_item_header_index = None
     if table:
         header_row = table.find("tr")
         headers = header_row.find_all(["th", "td"]) if header_row else []
         header_texts = [
             cell.get_text(" ", strip=True).lower() for cell in headers
         ]
+        if product_name:
+            for index, value in enumerate(header_texts):
+                candidate_unit = _serving_unit(value)
+                if candidate_unit and re.search(
+                    rf"\b\d+(?:[.,]\d+)?\b(?:\s+[a-z-]+)*\s+"
+                    rf"{re.escape(candidate_unit)}s?\b",
+                    product_name,
+                    re.I,
+                ):
+                    serving_unit = candidate_unit
+                    counted_item_header_index = index
+                    break
         for value in header_texts:
             if not re.search(
                 r"\beach\b|\bper\s+(?:item|serving|portion)\b|"
-                r"\bper\s+\d+\s*/\s*\d+",
+                r"\bper\s+\d+\s*/\s*\d+|"
+                r"\bper\s+(?:average\s+)?[a-z][a-z-]*\b",
                 value,
             ):
                 continue
@@ -242,15 +270,15 @@ def _nutrition_table(
             if serving_match:
                 serving_size_g = serving_match.group(1).replace(",", ".")
                 break
-        basis_index = None
-        if prefer_per_item and serving_size_g is None:
+        basis_index = counted_item_header_index
+        if basis_index is None and prefer_per_item and serving_size_g is None:
             basis_index = next(
                 (
                     index for index, value in enumerate(header_texts)
                     if re.search(
                         r"\beach\b|\bper\s+(?:item|serving|portion)\b",
                         value,
-                    )
+                    ) or _serving_unit(value)
                 ),
                 None,
             )
@@ -393,7 +421,13 @@ def _nutrition_table(
     elif "100g" in basis_text or "100 g" in basis_text:
         basis = "per_100g"
     elif re.search(
-        r"\beach\b|\bper\s+(?:item|serving|portion)\b", basis_text
+        r"\beach\b|\bper\s+(?:item|serving|portion)\b|"
+        r"\bper\s+(?:average\s+)?[a-z][a-z-]*\b",
+        basis_text,
+    ):
+        basis = "per_item"
+    elif re.search(
+        r"\bper\s+\d+\s*/\s*\d+", basis_text
     ):
         basis = "per_item"
     else:
@@ -402,6 +436,8 @@ def _nutrition_table(
     nutrition = {}
     if serving_size_g is not None:
         nutrition["serving_size_g"] = serving_size_g
+    if serving_unit is not None:
+        nutrition["serving_unit"] = serving_unit
     for label, value in rows:
         normalized_label = re.sub(r"[^a-z]+", " ", label).strip()
         for field, terms in labels.items():

@@ -159,6 +159,32 @@ class TestTransformProducts:
         assert product["package_unit"] == "g"
         assert product["nutrition_basis"] == "per_100g"
 
+    def test_extracts_count_and_uses_matching_item_nutrition_basis(self) -> None:
+        bagels = self.raw_product(
+            name="Warburtons 6 Sesame Thin Bagels",
+            size=None,
+            nutrition={
+                "calories": "136 kcal",
+                "proteinContent": "5.3 g",
+                "servingSize": "100g",
+            },
+        )
+        bagels["listing_name"] = bagels["product"]["name"]
+        bagels["nutrition_table"] = {
+            "energy_kcal": "136",
+            "protein_g": "5.3g",
+            "serving_size_g": "50",
+            "serving_unit": "bagel",
+        }
+        bagels["nutrition_basis"] = "per_item"
+
+        product = transform_products([bagels]).iloc[0]
+
+        assert product["package_quantity"] == Decimal("6")
+        assert product["package_unit"] == "each"
+        assert product["energy_kcal"] == Decimal("136")
+        assert product["nutrition_basis"] == "per_item"
+
     def test_uses_each_and_per_item_when_serving_weight_is_unknown(self) -> None:
         count_pack = self.raw_product(
             size="6 per pack",

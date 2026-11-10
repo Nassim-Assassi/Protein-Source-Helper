@@ -89,6 +89,7 @@ def _package_quantity(
     product: Mapping[str, Any],
     listing_name: str | None,
     serving_size_g: object = None,
+    serving_unit: object = None,
 ) -> tuple[Decimal | None, str | None]:
     values = [product.get("weight"), product.get("size"),
               product.get("description")]
@@ -136,6 +137,16 @@ def _package_quantity(
         unit = match.group(2).lower()
         factor, normalized_unit = _UNIT_FACTORS[unit]
         return quantity * factor if quantity is not None else None, normalized_unit
+    if listing_name and serving_unit:
+        item_match = re.search(
+            rf"\b(\d+(?:[.,]\d+)?)\b(?:\s+[a-z-]+)*\s+"
+            rf"{re.escape(str(serving_unit))}s?\b",
+            listing_name,
+            re.I,
+        )
+        if item_match:
+            quantity = _decimal(item_match.group(1))
+            return quantity, "each" if quantity is not None else None
     return None, None
 
 
@@ -213,7 +224,10 @@ def _transform_product(raw: Mapping[str, Any]) -> dict[str, Any]:
         nutrition_table = {}
     nutrition = _nutrition_values(product, nutrition_table)
     package_quantity, package_unit = _package_quantity(
-        product, listing_name, nutrition_table.get("serving_size_g")
+        product,
+        listing_name,
+        nutrition_table.get("serving_size_g"),
+        nutrition_table.get("serving_unit"),
     )
     nutrition_basis = _nutrition_basis(raw.get("nutrition_basis"), product)
 
