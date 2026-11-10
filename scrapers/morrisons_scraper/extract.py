@@ -28,6 +28,7 @@ EXCLUDED_CATEGORY_SLUGS = {
     "pet-shop",
     "toiletries-beauty",
     "toys-clothing-entertainment",
+    "beer-wines-spirits",
 }
 REQUEST_HEADERS = {
     "User-Agent": (
