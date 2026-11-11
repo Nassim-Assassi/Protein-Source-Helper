@@ -20,7 +20,7 @@ def _setup_logging() -> logging.Logger:
             datefmt="%Y-%m-%d %H:%M",
         )
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(logging.DEBUG)
         console_handler.setFormatter(formatter)
         scraper_logger.addHandler(console_handler)
 

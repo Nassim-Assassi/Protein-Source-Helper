@@ -179,9 +179,12 @@ class TestMain:
         result = LoadResult(10, 2, 3, 1)
         retailer_url = "https://groceries.morrisons.com"
 
-        with patch.object(
-            retailer_etl, "run_retailer_etl", return_value=result
-        ) as run_etl:
+        with (
+            patch.object(
+                retailer_etl, "run_retailer_etl", return_value=result
+            ) as run_etl,
+            patch.object(retailer_etl.logger, "setLevel") as set_level,
+        ):
             exit_code = retailer_etl.main([
                 "--batch-id", "42",
                 "--retailer-name", "Morrisons",
@@ -191,6 +194,7 @@ class TestMain:
         run_etl.assert_called_once_with(
             42, "Morrisons", retailer_url, local_test=False
         )
+        set_level.assert_called_once_with("INFO")
         assert exit_code == 0
         assert capsys.readouterr().out.splitlines() == [
             "Batch 42: loaded 10 snapshots.",
@@ -198,6 +202,24 @@ class TestMain:
             "New canonical products: 3",
             "New retailer categories: 1",
         ]
+
+    def test_verbose_flag_enables_debug_logging(self) -> None:
+        result = LoadResult(0, 0, 0, 0)
+
+        with (
+            patch.object(
+                retailer_etl, "run_retailer_etl", return_value=result
+            ),
+            patch.object(retailer_etl.logger, "setLevel") as set_level,
+        ):
+            retailer_etl.main([
+                "--batch-id", "42",
+                "--retailer-name", "Morrisons",
+                "--retailer-url", "https://groceries.morrisons.com",
+                "-v",
+            ])
+
+        set_level.assert_called_once_with("DEBUG")
 
     def test_local_test_does_not_require_batch_id(
         self, capsys, tmp_path

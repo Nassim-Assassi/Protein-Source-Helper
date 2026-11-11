@@ -473,7 +473,7 @@ def _extract_product(
         response = session.get(url, headers=REQUEST_HEADERS, timeout=20)
         response.raise_for_status()
     except requests.RequestException as error:
-        logger.warning("Could not fetch product page %s: %s", url, error)
+        logger.debug("Could not fetch product page %s: %s", url, error)
         return None
 
     soup = BeautifulSoup(response.content, "html.parser")

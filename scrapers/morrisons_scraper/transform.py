@@ -310,16 +310,9 @@ def transform_products(
 ) -> pd.DataFrame:
     """Normalize raw product mappings into the loader's product columns."""
     rows = []
-    skipped_count = 0
     for product in products:
         try:
             rows.append(_transform_product(product))
         except ValueError as error:
-            skipped_count += 1
-            logger.warning("Skipping invalid Morrisons product: %s", error)
-    logger.info(
-        "Transformation finished: %d products transformed, %d invalid rows skipped.",
-        len(rows),
-        skipped_count,
-    )
+            logger.debug("Skipping invalid Morrisons product: %s", error)
     return pd.DataFrame(rows, columns=PRODUCT_COLUMNS)
