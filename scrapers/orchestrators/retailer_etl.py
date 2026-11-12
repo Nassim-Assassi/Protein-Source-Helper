@@ -94,6 +94,8 @@ def run_retailer_etl(
             extraction.discovered_count,
         )
 
+        logger.info("Starting transform module for %s, batch %s.",
+                    retailer_name, scrape_batch_id)
         started_at = perf_counter()
         products = transform_products(extraction.products)
         skipped_count = len(extraction.products) - len(products)
@@ -121,6 +123,8 @@ def run_retailer_etl(
             logger.info("Local test CSV saved to %s.", output_path)
             return output_path
 
+        logger.info("Starting load module for %s, batch %s.",
+                    retailer_name, scrape_batch_id)
         started_at = perf_counter()
         with _connect(Config) as connection:
             result = load_scrape(connection, scrape_run_id, retailer, products)

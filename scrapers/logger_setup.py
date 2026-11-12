@@ -1,6 +1,7 @@
 """Logger setup for the pipeline modules."""
 
 import logging
+import sys
 
 
 def _setup_logging() -> logging.Logger:
@@ -19,7 +20,7 @@ def _setup_logging() -> logging.Logger:
             style="{",
             datefmt="%Y-%m-%d %H:%M",
         )
-        console_handler = logging.StreamHandler()
+        console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.DEBUG)
         console_handler.setFormatter(formatter)
         scraper_logger.addHandler(console_handler)
