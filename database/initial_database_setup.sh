@@ -5,6 +5,7 @@ SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 PROJECT_DIR=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
 ENV_FILE="$PROJECT_DIR/.env"
 SCHEMA_FILE="$SCRIPT_DIR/schema.sql"
+VIEWS_FILE="$SCRIPT_DIR/views.sql"
 
 if [ ! -f "$ENV_FILE" ]; then
   printf 'Missing environment file: %s\n' "$ENV_FILE" >&2
@@ -32,4 +33,5 @@ psql \
   --dbname "$DATABASE_NAME" \
   --single-transaction \
   --set ON_ERROR_STOP=1 \
-  --file "$SCHEMA_FILE"
+  --file "$SCHEMA_FILE" \
+  --file "$VIEWS_FILE"
