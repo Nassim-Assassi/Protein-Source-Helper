@@ -227,4 +227,3 @@ CREATE INDEX IF NOT EXISTS snapshot_scrape_run_retailer_idx ON public.snapshot (
 );
 
 -- Dashboard views are defined in database/views.sql.
-
