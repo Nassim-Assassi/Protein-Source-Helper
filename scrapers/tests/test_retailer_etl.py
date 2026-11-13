@@ -7,6 +7,7 @@ import pytest
 from scrapers.etl_contracts import (
     ExtractionResult,
     LoadResult,
+    ScrapeRunMetrics,
     TransformResult,
 )
 from scrapers.orchestrators import retailer_etl
@@ -66,9 +67,19 @@ class TestRunRetailerEtl:
         transform_module.transform_products.assert_called_once_with(
             raw_products)
         connect.assert_called_once_with(retailer_etl.Config)
-        load.assert_called_once_with(
+        load.assert_called_once()
+        assert load.call_args.args[:4] == (
             connection, 99, retailer, transformed_products
         )
+        metrics = load.call_args.args[4]
+        assert isinstance(metrics, ScrapeRunMetrics)
+        assert metrics.discovered_count == 2
+        assert metrics.extracted_count == 1
+        assert metrics.extraction_failed_count == 1
+        assert metrics.transformed_count == 1
+        assert metrics.transformation_skipped_count == 0
+        assert metrics.extraction_duration_seconds >= 0
+        assert metrics.transformation_duration_seconds >= 0
         fail_run.assert_not_called()
         assert actual_result is result
 
@@ -135,9 +146,11 @@ class TestRunRetailerEtl:
                     42, "Unknown", "https://example.com"
                 )
 
-        fail_run.assert_called_once_with(
+        fail_run.assert_called_once()
+        assert fail_run.call_args.args[:2] == (
             99, "No scraper modules found for 'Unknown'"
         )
+        assert isinstance(fail_run.call_args.args[2], ScrapeRunMetrics)
 
     def test_does_not_open_database_when_all_products_are_skipped(self) -> None:
         extraction = ExtractionResult([{"listing_name": "Incomplete"}], 1, 0)
@@ -176,9 +189,56 @@ class TestRunRetailerEtl:
                     "Expected an error for an all-invalid batch")
 
         connect.assert_not_called()
-        fail_run.assert_called_once_with(
+        fail_run.assert_called_once()
+        assert fail_run.call_args.args[:2] == (
             99, "No valid morrisons products to load for this batch"
         )
+        metrics = fail_run.call_args.args[2]
+        assert metrics.discovered_count == 1
+        assert metrics.extracted_count == 1
+        assert metrics.transformed_count == 0
+        assert metrics.transformation_skipped_count == 1
+
+    def test_records_load_duration_when_load_fails(self) -> None:
+        extraction = ExtractionResult([{"listing_name": "Product"}], 1, 0)
+        products = pd.DataFrame([{"listing_name": "Product"}])
+        extract_module = SimpleNamespace(
+            extract_products_with_stats=MagicMock(return_value=extraction)
+        )
+        transform_module = SimpleNamespace(
+            transform_products=MagicMock(
+                return_value=TransformResult(products, 0)
+            )
+        )
+        connection_context = MagicMock()
+
+        with (
+            patch.object(retailer_etl, "initiate_scrape_run", return_value=99),
+            patch.object(retailer_etl, "fail_scrape_run") as fail_run,
+            patch.object(
+                retailer_etl,
+                "import_module",
+                side_effect=[extract_module, transform_module],
+            ),
+            patch.object(
+                retailer_etl, "_connect", return_value=connection_context
+            ),
+            patch.object(
+                retailer_etl,
+                "load_scrape",
+                side_effect=RuntimeError("load failed"),
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="load failed"):
+                retailer_etl.run_retailer_etl(
+                    42, "morrisons", "https://groceries.morrisons.com"
+                )
+
+        metrics = fail_run.call_args.args[2]
+        assert metrics.discovered_count == 1
+        assert metrics.transformed_count == 1
+        assert metrics.load_duration_seconds is not None
+        assert metrics.load_duration_seconds >= 0
 
 
 class TestMain:

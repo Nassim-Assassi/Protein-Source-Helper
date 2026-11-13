@@ -7,7 +7,7 @@ from pathlib import Path
 from time import perf_counter
 
 from scrapers.config import Config
-from scrapers.etl_contracts import LoadResult
+from scrapers.etl_contracts import LoadResult, ScrapeRunMetrics
 from scrapers.loader.load import _connect, load_scrape
 from scrapers.logger_setup import logger
 from scrapers.orchestrators.scrape_run_helpers import (
@@ -29,12 +29,14 @@ def _format_duration(seconds: float) -> str:
 
 
 def _mark_scrape_run_failed(
-    scrape_run_id: int | None, error: Exception
+    scrape_run_id: int | None,
+    error: Exception,
+    metrics: ScrapeRunMetrics,
 ) -> None:
     if scrape_run_id is None:
         return
     try:
-        fail_scrape_run(scrape_run_id, str(error))
+        fail_scrape_run(scrape_run_id, str(error), metrics)
     except Exception:
         logger.exception("Failed to mark scrape run %s as failed.",
                          scrape_run_id)
@@ -49,6 +51,7 @@ def run_retailer_etl(
     """Extract and transform products, then load them or save a local CSV."""
     retailer = RetailerConfig(name=retailer_name, url=retailer_url)
     scrape_run_id = None
+    metrics = ScrapeRunMetrics()
     if not local_test:
         if scrape_batch_id is None:
             raise ValueError(
@@ -70,22 +73,28 @@ def run_retailer_etl(
             extract_module,
             transform_module,
         }:
-            _mark_scrape_run_failed(scrape_run_id, error)
+            _mark_scrape_run_failed(scrape_run_id, error, metrics)
             raise
         missing_module_error = ValueError(
             f"No scraper modules found for {retailer_name!r}"
         )
-        _mark_scrape_run_failed(scrape_run_id, missing_module_error)
+        _mark_scrape_run_failed(scrape_run_id, missing_module_error, metrics)
         raise missing_module_error from error
     except Exception as error:
-        _mark_scrape_run_failed(scrape_run_id, error)
+        _mark_scrape_run_failed(scrape_run_id, error, metrics)
         raise
 
     try:
         logger.info("Starting extract module for %s, batch %s.",
                     retailer_name, scrape_batch_id)
         started_at = perf_counter()
-        extraction = extract_products_with_stats()
+        try:
+            extraction = extract_products_with_stats()
+        finally:
+            metrics.extraction_duration_seconds = perf_counter() - started_at
+        metrics.discovered_count = extraction.discovered_count
+        metrics.extracted_count = len(extraction.products)
+        metrics.extraction_failed_count = extraction.failed_count
         logger.info(
             "Extraction finished in %s: %d products extracted, %d failed out of "
             "%d discovered.",
@@ -98,8 +107,15 @@ def run_retailer_etl(
         logger.info("Starting transform module for %s, batch %s.",
                     retailer_name, scrape_batch_id)
         started_at = perf_counter()
-        transformation = transform_products(extraction.products)
+        try:
+            transformation = transform_products(extraction.products)
+        finally:
+            metrics.transformation_duration_seconds = (
+                perf_counter() - started_at
+            )
         products = transformation.products
+        metrics.transformed_count = len(products)
+        metrics.transformation_skipped_count = transformation.skipped_count
         logger.info(
             "Transformation finished in %s: %d products ready to load, %d rows "
             "skipped.",
@@ -127,8 +143,18 @@ def run_retailer_etl(
         logger.info("Starting load module for %s, batch %s.",
                     retailer_name, scrape_batch_id)
         started_at = perf_counter()
-        with _connect(Config) as connection:
-            result = load_scrape(connection, scrape_run_id, retailer, products)
+        load_succeeded = False
+        try:
+            with _connect(Config) as connection:
+                result = load_scrape(
+                    connection, scrape_run_id, retailer, products, metrics
+                )
+            load_succeeded = True
+        finally:
+            if not load_succeeded:
+                metrics.loaded_count = None
+            if metrics.load_duration_seconds is None:
+                metrics.load_duration_seconds = perf_counter() - started_at
         logger.info(
             "Load finished in %s: %d snapshots loaded, %d new brands, %d new "
             "canonical products, %d new categories.",
@@ -140,7 +166,7 @@ def run_retailer_etl(
         )
         return result
     except Exception as error:
-        _mark_scrape_run_failed(scrape_run_id, error)
+        _mark_scrape_run_failed(scrape_run_id, error, metrics)
         raise
 
 

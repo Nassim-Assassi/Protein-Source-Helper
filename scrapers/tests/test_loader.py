@@ -6,6 +6,7 @@ import pytest
 
 from scrapers.constants import PRODUCT_COLUMNS
 from scrapers.config import Config
+from scrapers.etl_contracts import ScrapeRunMetrics
 from scrapers.loader.load import (
     _connect,
     _resolve_brand_id,
@@ -119,6 +120,15 @@ class TestLoadScrape:
     def test_load_scrape_runs_in_transaction(self) -> None:
         connection = MagicMock()
         cursor = connection.cursor.return_value.__enter__.return_value
+        metrics = ScrapeRunMetrics(
+            discovered_count=4,
+            extracted_count=3,
+            extraction_failed_count=1,
+            transformed_count=2,
+            transformation_skipped_count=1,
+            extraction_duration_seconds=0.5,
+            transformation_duration_seconds=0.2,
+        )
 
         with (
             patch("scrapers.loader.load._resolve_retailer_id", return_value=1),
@@ -143,15 +153,22 @@ class TestLoadScrape:
                 1,
                 RetailerConfig("Retailer", "https://example.com"),
                 self.products_frame(),
+                metrics,
             )
 
         connection.transaction.assert_called_once()
         connection.cursor.assert_called_once()
         assert result.loaded_count == 1
-        assert any(
-            "SET scrape_run_status = 'succeeded'" in call.args[0]
-            for call in cursor.execute.call_args_list
+        success_update = next(
+            call for call in cursor.execute.call_args_list
+            if "SET scrape_run_status = 'succeeded'" in call.args[0]
         )
+        assert "scrape_run_loaded_count = %s" in success_update.args[0]
+        assert success_update.args[1][:6] == (4, 3, 1, 2, 1, 1)
+        assert success_update.args[1][6:8] == (0.5, 0.2)
+        assert success_update.args[1][8] >= 0
+        assert success_update.args[1][9] == 1
+        assert metrics.loaded_count == 1
 
     @pytest.mark.parametrize(
         ("log_level", "expect_progress"),

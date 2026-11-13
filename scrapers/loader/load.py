@@ -13,7 +13,7 @@ from psycopg import Cursor
 
 from scrapers.config import Config
 from scrapers.constants import PRODUCT_COLUMNS
-from scrapers.etl_contracts import LoadResult
+from scrapers.etl_contracts import LoadResult, ScrapeRunMetrics
 from scrapers.logger_setup import logger
 from scrapers.retailer_config import RetailerConfig
 
@@ -316,6 +316,7 @@ def load_scrape(
     scrape_run_id: int,
     retailer: RetailerConfig,
     products: pd.DataFrame,
+    metrics: ScrapeRunMetrics | None = None,
 ) -> LoadResult:
     """Load product rows and their snapshots for one retailer scrape."""
     if products.empty:
@@ -336,6 +337,7 @@ def load_scrape(
 
     load_started_at = perf_counter()
     with connection.transaction(), connection.cursor() as cursor:
+        run_metrics = metrics or ScrapeRunMetrics()
         retailer_id = _resolve_retailer_id(cursor, retailer)
         loaded_count = 0
         new_brand_count = 0
@@ -403,14 +405,36 @@ def load_scrape(
                     perf_counter() - load_started_at,
                 )
 
+        run_metrics.loaded_count = loaded_count
+        run_metrics.load_duration_seconds = perf_counter() - load_started_at
         cursor.execute(
             """
             UPDATE public.scrape_run
             SET scrape_run_status = 'succeeded',
-                scrape_run_finished_at = clock_timestamp()
+                scrape_run_finished_at = clock_timestamp(),
+                scrape_run_discovered_count = %s,
+                scrape_run_extracted_count = %s,
+                scrape_run_extraction_failed_count = %s,
+                scrape_run_transformed_count = %s,
+                scrape_run_transformation_skipped_count = %s,
+                scrape_run_loaded_count = %s,
+                scrape_run_extraction_duration_seconds = %s,
+                scrape_run_transformation_duration_seconds = %s,
+                scrape_run_load_duration_seconds = %s
             WHERE scrape_run_id = %s
             """,
-            (scrape_run_id,),
+            (
+                run_metrics.discovered_count,
+                run_metrics.extracted_count,
+                run_metrics.extraction_failed_count,
+                run_metrics.transformed_count,
+                run_metrics.transformation_skipped_count,
+                run_metrics.loaded_count,
+                run_metrics.extraction_duration_seconds,
+                run_metrics.transformation_duration_seconds,
+                run_metrics.load_duration_seconds,
+                scrape_run_id,
+            ),
         )
 
         result = LoadResult(

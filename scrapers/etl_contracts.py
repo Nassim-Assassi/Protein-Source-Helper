@@ -31,3 +31,18 @@ class LoadResult:
     new_brand_count: int
     new_product_count: int
     new_retailer_category_count: int
+
+
+@dataclass(slots=True)
+class ScrapeRunMetrics:
+    """Counts and durations collected while processing one scrape run."""
+
+    discovered_count: int | None = None
+    extracted_count: int | None = None
+    extraction_failed_count: int | None = None
+    transformed_count: int | None = None
+    transformation_skipped_count: int | None = None
+    loaded_count: int | None = None
+    extraction_duration_seconds: float | None = None
+    transformation_duration_seconds: float | None = None
+    load_duration_seconds: float | None = None

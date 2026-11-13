@@ -113,6 +113,20 @@ CREATE TABLE IF NOT EXISTS public.scrape_run (
     scrape_run_started_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     scrape_run_finished_at timestamptz,
     scrape_run_error_message text,
+    scrape_run_discovered_count int CHECK (scrape_run_discovered_count >= 0),
+    scrape_run_extracted_count int CHECK (scrape_run_extracted_count >= 0),
+    scrape_run_extraction_failed_count int
+    CHECK (scrape_run_extraction_failed_count >= 0),
+    scrape_run_transformed_count int CHECK (scrape_run_transformed_count >= 0),
+    scrape_run_transformation_skipped_count int
+    CHECK (scrape_run_transformation_skipped_count >= 0),
+    scrape_run_loaded_count int CHECK (scrape_run_loaded_count >= 0),
+    scrape_run_extraction_duration_seconds double precision
+    CHECK (scrape_run_extraction_duration_seconds >= 0),
+    scrape_run_transformation_duration_seconds double precision
+    CHECK (scrape_run_transformation_duration_seconds >= 0),
+    scrape_run_load_duration_seconds double precision
+    CHECK (scrape_run_load_duration_seconds >= 0),
     CONSTRAINT scrape_run_finished_after_started_check
     CHECK (
         scrape_run_finished_at IS null
