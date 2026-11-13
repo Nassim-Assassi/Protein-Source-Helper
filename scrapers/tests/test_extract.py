@@ -291,3 +291,23 @@ class TestNavigate:
                 timeout=60000,
             ),
         ]
+
+
+class TestCrawlCategoryProductUrls:
+    def test_keeps_product_links_that_disappear_after_scrolling(self) -> None:
+        page = Mock()
+        product_link = (
+            "https://groceries.morrisons.com/products/example/123?source=category"
+        )
+        page.evaluate.side_effect = [None, 100, None, 100, None, 100]
+        page.locator.return_value.evaluate_all.side_effect = [
+            [product_link],
+            [],
+            [],
+        ]
+
+        product_urls = extract._crawl_category_product_urls(page)
+
+        assert product_urls == {
+            "https://groceries.morrisons.com/products/example/123"
+        }

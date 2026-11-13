@@ -91,6 +91,30 @@ def _navigate(page, url: str, attempts: int = 3) -> bool:
     return False
 
 
+def _crawl_category_product_urls(page) -> set[str]:
+    product_urls = set()
+    previous_height = -1
+    unchanged_scrolls = 0
+    for _ in range(20):
+        page.evaluate(
+            "window.scrollTo(0, document.body.scrollHeight)")
+        page.wait_for_timeout(500)
+        for link in page.locator('a[href*="/products/"]').evaluate_all(
+            "anchors => anchors.map(anchor => anchor.href)"
+        ):
+            product_urls.add(_canonical_url(link))
+
+        current_height = page.evaluate("document.body.scrollHeight")
+        if current_height == previous_height:
+            unchanged_scrolls += 1
+            if unchanged_scrolls >= 2:
+                break
+        else:
+            unchanged_scrolls = 0
+            previous_height = current_height
+    return product_urls
+
+
 def _crawl_product_categories() -> dict[str, str]:
     product_categories = {}
     logger.debug("Starting product category discovery.")
@@ -123,28 +147,9 @@ def _crawl_product_categories() -> dict[str, str]:
                     continue
                 page.wait_for_timeout(750)
 
-                previous_height = -1
-                unchanged_scrolls = 0
-                for _ in range(20):
-                    page.evaluate(
-                        "window.scrollTo(0, document.body.scrollHeight)")
-                    page.wait_for_timeout(500)
-                    current_height = page.evaluate(
-                        "document.body.scrollHeight")
-                    if current_height == previous_height:
-                        unchanged_scrolls += 1
-                        if unchanged_scrolls >= 2:
-                            break
-                    else:
-                        unchanged_scrolls = 0
-                        previous_height = current_height
-
                 parts = urlsplit(category_url).path.strip("/").split("/")
                 category_name = _category_name(parts[1], root_names)
-                for link in page.locator('a[href*="/products/"]').evaluate_all(
-                    "anchors => anchors.map(anchor => anchor.href)"
-                ):
-                    product_url = _canonical_url(link)
+                for product_url in _crawl_category_product_urls(page):
                     product_categories.setdefault(product_url, category_name)
                 logger.debug(
                     "Category %d/%d complete; %d product URLs discovered so "
