@@ -251,6 +251,19 @@ def _transform_product(raw: Mapping[str, Any]) -> dict[str, Any]:
         nutrition_table.get("serving_unit"),
     )
     nutrition_basis = _nutrition_basis(raw.get("nutrition_basis"), product)
+    serving_size_g = _decimal(nutrition_table.get("serving_size_g"))
+    if (
+        nutrition_basis == "per_item"
+        and package_unit == "g"
+        and serving_size_g is not None
+        and serving_size_g > 0
+    ):
+        per_100g_factor = Decimal("100") / serving_size_g
+        nutrition = {
+            field: value * per_100g_factor if value is not None else None
+            for field, value in nutrition.items()
+        }
+        nutrition_basis = "per_100g"
 
     row = {
         "listing_name": listing_name,

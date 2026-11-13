@@ -212,6 +212,25 @@ class TestTransformProducts:
         assert product["package_unit"] == "each"
         assert product["nutrition_basis"] == "per_item"
 
+    def test_normalizes_weighted_item_nutrition_to_per_100g(self) -> None:
+        product = self.raw_product(
+            name="Young's Chip Shop 2 Extra Large Beer Batter Fillets",
+            size="400g",
+        )
+        product["nutrition_basis"] = "per_item"
+        product["nutrition_table"] = {
+            "energy_kcal": "600",
+            "protein_g": "30",
+            "serving_size_g": "200",
+        }
+
+        transformed = transform_products([product]).products.iloc[0]
+
+        assert transformed["package_unit"] == "g"
+        assert transformed["nutrition_basis"] == "per_100g"
+        assert transformed["energy_kcal"] == Decimal("300")
+        assert transformed["protein_g"] == Decimal("15")
+
     def test_skips_invalid_rows_and_keeps_valid_products(self) -> None:
         valid = self.raw_product()
         invalid = self.raw_product()
