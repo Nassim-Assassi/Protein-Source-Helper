@@ -343,6 +343,8 @@ def load_scrape(
         new_brand_count = 0
         new_product_count = 0
         new_retailer_category_count = 0
+        brand_ids: dict[str, int] = {}
+        retailer_category_ids: dict[tuple[int, str], int] = {}
 
         for processed_count, row in enumerate(
             products.loc[:, list(PRODUCT_COLUMNS)].to_dict(orient="records"),
@@ -358,9 +360,15 @@ def load_scrape(
 
             brand_id = None
             if brand_name:
-                brand_id, brand_created = _resolve_brand_id(
-                    cursor, str(brand_name))
-                new_brand_count += brand_created
+                brand_key = str(brand_name)
+                if brand_key in brand_ids:
+                    brand_id = brand_ids[brand_key]
+                else:
+                    brand_id, brand_created = _resolve_brand_id(
+                        cursor, brand_key
+                    )
+                    brand_ids[brand_key] = brand_id
+                    new_brand_count += brand_created
 
             canonical_product_id, product_created = _resolve_canonical_product_id(
                 cursor,
@@ -373,10 +381,17 @@ def load_scrape(
 
             retailer_category_id = None
             if category_name:
-                retailer_category_id, category_created = _resolve_retailer_category_id(
-                    cursor, retailer_id, str(category_name)
-                )
-                new_retailer_category_count += category_created
+                category_key = (retailer_id, str(category_name))
+                if category_key in retailer_category_ids:
+                    retailer_category_id = retailer_category_ids[category_key]
+                else:
+                    retailer_category_id, category_created = (
+                        _resolve_retailer_category_id(
+                            cursor, retailer_id, category_key[1]
+                        )
+                    )
+                    retailer_category_ids[category_key] = retailer_category_id
+                    new_retailer_category_count += category_created
 
             external_id = _row_value(row, "external_id")
             image_url = _row_value(row, "image_url")

@@ -170,6 +170,49 @@ class TestLoadScrape:
         assert success_update.args[1][9] == 1
         assert metrics.loaded_count == 1
 
+    def test_load_scrape_caches_brand_and_category_ids(self) -> None:
+        connection = MagicMock()
+        products = pd.concat(
+            [
+                self.products_frame(brand_name="Brand", category_name="Meat"),
+                self.products_frame(brand_name="Brand", category_name="Meat"),
+            ],
+            ignore_index=True,
+        )
+
+        with (
+            patch("scrapers.loader.load._resolve_retailer_id", return_value=1),
+            patch(
+                "scrapers.loader.load._resolve_brand_id",
+                return_value=(10, True),
+            ) as resolve_brand,
+            patch(
+                "scrapers.loader.load._resolve_canonical_product_id",
+                return_value=(20, False),
+            ),
+            patch(
+                "scrapers.loader.load._resolve_retailer_category_id",
+                return_value=(30, True),
+            ) as resolve_category,
+            patch(
+                "scrapers.loader.load._resolve_retailer_listing_id",
+                return_value=40,
+            ),
+            patch("scrapers.loader.load._load_snapshot", return_value=True),
+        ):
+            result = load_scrape(
+                connection,
+                1,
+                RetailerConfig("Retailer", "https://example.com"),
+                products,
+            )
+
+        resolve_brand.assert_called_once()
+        resolve_category.assert_called_once()
+        assert result.loaded_count == 2
+        assert result.new_brand_count == 1
+        assert result.new_retailer_category_count == 1
+
     @pytest.mark.parametrize(
         ("log_level", "expect_progress"),
         [(logging.DEBUG, True), (logging.INFO, False)],
