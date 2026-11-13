@@ -6,6 +6,7 @@ import json
 import re
 from copy import deepcopy
 from collections.abc import Mapping
+from time import perf_counter
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import requests
@@ -30,7 +31,7 @@ EXCLUDED_CATEGORY_SLUGS = {
     "toys-clothing-entertainment",
     "beer-wines-spirits",
 }
-EXTRACTION_PROGRESS_INTERVAL = 25
+EXTRACTION_PROGRESS_INTERVAL = 100
 REQUEST_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -565,9 +566,17 @@ def _extract_product(
 
 def extract_products_with_stats() -> ExtractionResult:
     """Crawl product pages and return results with extraction counts."""
+    category_started_at = perf_counter()
     product_categories = _crawl_product_categories()
+    logger.debug(
+        "Category discovery finished in %.1fs: %d product URLs discovered.",
+        perf_counter() - category_started_at,
+        len(product_categories),
+    )
+
     products = []
     failed_count = 0
+    extraction_started_at = perf_counter()
     with requests.Session() as session:
         for processed_count, (url, category_name) in enumerate(
             sorted(product_categories.items()), start=1
@@ -580,11 +589,19 @@ def extract_products_with_stats() -> ExtractionResult:
             if processed_count % EXTRACTION_PROGRESS_INTERVAL == 0:
                 logger.debug(
                     "Extraction progress: %d/%d product pages processed; "
-                    "%d failed.",
+                    "%d failed; %.1fs elapsed.",
                     processed_count,
                     len(product_categories),
                     failed_count,
+                    perf_counter() - extraction_started_at,
                 )
+    logger.debug(
+        "Product-page extraction finished in %.1fs: %d products extracted; "
+        "%d failed.",
+        perf_counter() - extraction_started_at,
+        len(products),
+        failed_count,
+    )
     return ExtractionResult(
         products=products,
         discovered_count=len(product_categories),

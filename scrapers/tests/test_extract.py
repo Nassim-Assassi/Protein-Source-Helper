@@ -1,5 +1,7 @@
+import logging
 from unittest.mock import Mock, call, patch
 
+import pytest
 from bs4 import BeautifulSoup
 
 from scrapers.morrisons_scraper import extract
@@ -239,11 +241,23 @@ class TestNutritionTable:
 
 
 class TestExtractProductsWithStats:
-    def test_logs_debug_progress_after_25_product_pages(self) -> None:
+    @pytest.mark.parametrize(
+        ("product_count", "log_level", "expect_progress"),
+        [
+            (99, logging.DEBUG, False),
+            (100, logging.DEBUG, True),
+            (100, logging.INFO, False),
+        ],
+    )
+    def test_logs_progress_every_100_pages_only_at_debug_level(
+        self, caplog, product_count: int, log_level: int,
+        expect_progress: bool,
+    ) -> None:
         product_categories = {
             f"https://example.com/product/{index}": "Category"
-            for index in range(25)
+            for index in range(product_count)
         }
+        caplog.set_level(log_level, logger="scrapers")
 
         with (
             patch.object(
@@ -254,18 +268,19 @@ class TestExtractProductsWithStats:
             patch.object(
                 extract, "_extract_product", return_value={"product": {}}
             ),
-            patch.object(extract.logger, "debug") as debug_log,
         ):
             result = extract.extract_products_with_stats()
 
-        assert len(result.products) == 25
+        assert len(result.products) == product_count
         assert result.failed_count == 0
-        debug_log.assert_called_once_with(
-            "Extraction progress: %d/%d product pages processed; %d failed.",
-            25,
-            25,
-            0,
-        )
+        progress_messages = [
+            record.getMessage()
+            for record in caplog.records
+            if record.getMessage().startswith("Extraction progress:")
+        ]
+        assert bool(progress_messages) is expect_progress
+        if expect_progress:
+            assert "100/100" in progress_messages[0]
 
 
 class TestNavigate:

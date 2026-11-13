@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import MagicMock, Mock, patch
 
 import pandas as pd
@@ -151,6 +152,48 @@ class TestLoadScrape:
             "SET scrape_run_status = 'succeeded'" in call.args[0]
             for call in cursor.execute.call_args_list
         )
+
+    @pytest.mark.parametrize(
+        ("log_level", "expect_progress"),
+        [(logging.DEBUG, True), (logging.INFO, False)],
+    )
+    def test_logs_load_progress_only_at_debug_level(
+        self, caplog, log_level: int, expect_progress: bool
+    ) -> None:
+        connection = MagicMock()
+        products = pd.concat(
+            [self.products_frame()] * 100, ignore_index=True
+        )
+        caplog.set_level(log_level, logger="scrapers")
+
+        with (
+            patch("scrapers.loader.load._resolve_retailer_id", return_value=1),
+            patch(
+                "scrapers.loader.load._resolve_canonical_product_id",
+                return_value=(20, False),
+            ),
+            patch(
+                "scrapers.loader.load._resolve_retailer_listing_id",
+                return_value=40,
+            ),
+            patch("scrapers.loader.load._load_snapshot", return_value=True),
+        ):
+            result = load_scrape(
+                connection,
+                1,
+                RetailerConfig("Retailer", "https://example.com"),
+                products,
+            )
+
+        assert result.loaded_count == 100
+        progress_messages = [
+            record.getMessage()
+            for record in caplog.records
+            if record.getMessage().startswith("Load progress:")
+        ]
+        assert bool(progress_messages) is expect_progress
+        if expect_progress:
+            assert "100/100" in progress_messages[0]
 
     def test_empty_products_fail_before_database_writes(self) -> None:
         connection = Mock()

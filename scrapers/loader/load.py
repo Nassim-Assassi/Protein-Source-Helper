@@ -4,6 +4,7 @@ Load data into the PostgreSQL database for an individual retailer scrape run.
 
 from __future__ import annotations
 
+from time import perf_counter
 from typing import Any
 
 import pandas as pd
@@ -13,7 +14,10 @@ from psycopg import Cursor
 from scrapers.config import Config
 from scrapers.constants import PRODUCT_COLUMNS
 from scrapers.etl_contracts import LoadResult
+from scrapers.logger_setup import logger
 from scrapers.retailer_config import RetailerConfig
+
+LOAD_PROGRESS_INTERVAL = 100
 
 
 def _connect(config: type[Config]) -> psycopg.Connection[Any]:
@@ -330,6 +334,7 @@ def load_scrape(
         if invalid_values.any():
             raise ValueError(f"Product {column} values must not be empty")
 
+    load_started_at = perf_counter()
     with connection.transaction(), connection.cursor() as cursor:
         retailer_id = _resolve_retailer_id(cursor, retailer)
         loaded_count = 0
@@ -337,7 +342,10 @@ def load_scrape(
         new_product_count = 0
         new_retailer_category_count = 0
 
-        for row in products.loc[:, list(PRODUCT_COLUMNS)].to_dict(orient="records"):
+        for processed_count, row in enumerate(
+            products.loc[:, list(PRODUCT_COLUMNS)].to_dict(orient="records"),
+            start=1,
+        ):
             listing_name = _row_value(row, "listing_name")
             source_url = _row_value(row, "source_url")
             brand_name = _row_value(row, "brand_name")
@@ -385,6 +393,15 @@ def load_scrape(
                 cursor, retailer_id, retailer_listing_id, scrape_run_id, row
             ):
                 loaded_count += 1
+            if processed_count % LOAD_PROGRESS_INTERVAL == 0:
+                logger.debug(
+                    "Load progress: %d/%d products processed; %d snapshots "
+                    "loaded; %.1fs elapsed.",
+                    processed_count,
+                    len(products),
+                    loaded_count,
+                    perf_counter() - load_started_at,
+                )
 
         cursor.execute(
             """
@@ -396,9 +413,17 @@ def load_scrape(
             (scrape_run_id,),
         )
 
-        return LoadResult(
+        result = LoadResult(
             loaded_count=loaded_count,
             new_brand_count=new_brand_count,
             new_product_count=new_product_count,
             new_retailer_category_count=new_retailer_category_count,
         )
+
+    logger.debug(
+        "Load finished in %.1fs: %d/%d snapshots loaded.",
+        perf_counter() - load_started_at,
+        result.loaded_count,
+        len(products),
+    )
+    return result
