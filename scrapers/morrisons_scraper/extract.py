@@ -30,6 +30,7 @@ EXCLUDED_CATEGORY_SLUGS = {
     "toys-clothing-entertainment",
     "beer-wines-spirits",
 }
+EXTRACTION_PROGRESS_INTERVAL = 25
 REQUEST_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -77,6 +78,9 @@ def _category_name(slug: str, root_names: Mapping[str, str]) -> str:
 def _navigate(page, url: str, attempts: int = 3) -> bool:
     for attempt in range(1, attempts + 1):
         try:
+            logger.debug(
+                "Navigating to %s (attempt %d/%d).", url, attempt, attempts
+            )
             page.goto(url, wait_until="domcontentloaded", timeout=60000)
             return True
         except PlaywrightError as error:
@@ -89,6 +93,7 @@ def _navigate(page, url: str, attempts: int = 3) -> bool:
 
 def _crawl_product_categories() -> dict[str, str]:
     product_categories = {}
+    logger.debug("Starting product category discovery.")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
@@ -101,7 +106,19 @@ def _crawl_product_categories() -> dict[str, str]:
             category_urls, root_names = _category_links(
                 BeautifulSoup(page.content(), "html.parser")
             )
-            for category_url in sorted(category_urls):
+            logger.debug(
+                "Found %d product categories to crawl.", len(category_urls)
+            )
+            sorted_category_urls = sorted(category_urls)
+            for category_index, category_url in enumerate(
+                sorted_category_urls, start=1
+            ):
+                logger.debug(
+                    "Crawling product category %d/%d: %s.",
+                    category_index,
+                    len(sorted_category_urls),
+                    category_url,
+                )
                 if not _navigate(page, category_url):
                     continue
                 page.wait_for_timeout(750)
@@ -129,6 +146,13 @@ def _crawl_product_categories() -> dict[str, str]:
                 ):
                     product_url = _canonical_url(link)
                     product_categories.setdefault(product_url, category_name)
+                logger.debug(
+                    "Category %d/%d complete; %d product URLs discovered so "
+                    "far.",
+                    category_index,
+                    len(sorted_category_urls),
+                    len(product_categories),
+                )
         finally:
             browser.close()
     return product_categories
@@ -540,12 +564,22 @@ def extract_products_with_stats() -> ExtractionResult:
     products = []
     failed_count = 0
     with requests.Session() as session:
-        for url, category_name in sorted(product_categories.items()):
+        for processed_count, (url, category_name) in enumerate(
+            sorted(product_categories.items()), start=1
+        ):
             product = _extract_product(session, url, category_name)
             if product is not None:
                 products.append(product)
             else:
                 failed_count += 1
+            if processed_count % EXTRACTION_PROGRESS_INTERVAL == 0:
+                logger.debug(
+                    "Extraction progress: %d/%d product pages processed; "
+                    "%d failed.",
+                    processed_count,
+                    len(product_categories),
+                    failed_count,
+                )
     return ExtractionResult(
         products=products,
         discovered_count=len(product_categories),

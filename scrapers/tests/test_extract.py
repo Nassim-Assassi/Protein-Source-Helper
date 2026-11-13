@@ -1,5 +1,8 @@
+from unittest.mock import Mock, call, patch
+
 from bs4 import BeautifulSoup
 
+from scrapers.morrisons_scraper import extract
 from scrapers.morrisons_scraper.extract import _nutrition_table
 
 
@@ -233,3 +236,58 @@ class TestNutritionTable:
         assert nutrition["serving_size_g"] == "50"
         assert nutrition["serving_unit"] == "bagel"
         assert basis == "per_item"
+
+
+class TestExtractProductsWithStats:
+    def test_logs_debug_progress_after_25_product_pages(self) -> None:
+        product_categories = {
+            f"https://example.com/product/{index}": "Category"
+            for index in range(25)
+        }
+
+        with (
+            patch.object(
+                extract,
+                "_crawl_product_categories",
+                return_value=product_categories,
+            ),
+            patch.object(
+                extract, "_extract_product", return_value={"product": {}}
+            ),
+            patch.object(extract.logger, "debug") as debug_log,
+        ):
+            result = extract.extract_products_with_stats()
+
+        assert len(result.products) == 25
+        assert result.failed_count == 0
+        debug_log.assert_called_once_with(
+            "Extraction progress: %d/%d product pages processed; %d failed.",
+            25,
+            25,
+            0,
+        )
+
+
+class TestNavigate:
+    def test_logs_navigation_before_opening_page(self) -> None:
+        page = Mock()
+        events = Mock()
+
+        with patch.object(extract.logger, "debug") as debug_log:
+            events.attach_mock(debug_log, "debug")
+            events.attach_mock(page.goto, "goto")
+            assert extract._navigate(page, "https://example.com/category")
+
+        assert events.mock_calls == [
+            call.debug(
+                "Navigating to %s (attempt %d/%d).",
+                "https://example.com/category",
+                1,
+                3,
+            ),
+            call.goto(
+                "https://example.com/category",
+                wait_until="domcontentloaded",
+                timeout=60000,
+            ),
+        ]
