@@ -96,6 +96,7 @@ def _package_quantity(
               product.get("description")]
     if listing_name:
         values.append(listing_name)
+    normalized_values = []
     for value in values:
         if isinstance(value, Mapping):
             unit = value.get("unitText") or value.get("unitCode") or ""
@@ -106,9 +107,28 @@ def _package_quantity(
                 "LTR": "l",
             }.get(str(unit).upper(), unit)
             value = f"{value.get('value', '')} {unit}"
+        normalized_values.append(str(value or ""))
+    values = normalized_values
+    for value in values:
+        multipack_match = re.search(
+            r"(\d+(?:[.,]\d+)?)\s*[x×]\s*"
+            r"(\d+(?:[.,]\d+)?)\s*(kg|g|ml|l|litres?|liters?)\b",
+            value,
+            re.I,
+        )
+        if multipack_match:
+            pack_count = _decimal(multipack_match.group(1))
+            item_quantity = _decimal(multipack_match.group(2))
+            factor, normalized_unit = _UNIT_FACTORS[
+                multipack_match.group(3).lower()
+            ]
+            if pack_count is not None and item_quantity is not None:
+                return pack_count * item_quantity * factor, normalized_unit
+
+    for value in values:
         pack_match = re.search(
             r"(\d+(?:[.,]\d+)?)\s*(?:per\s+pack|pack)\b",
-            str(value or ""),
+            value,
             re.I,
         )
         if pack_match:
@@ -119,7 +139,7 @@ def _package_quantity(
             return quantity, "each"
         servings_match = re.search(
             r"\b(\d+(?:[.,]\d+)?)\s+(?:servings?|portions?)\s+per\b",
-            str(value or ""),
+            value,
             re.I,
         )
         if servings_match:
@@ -129,7 +149,7 @@ def _package_quantity(
                 return quantity * serving_weight, "g"
         match = re.search(
             r"(\d+(?:[.,]\d+)?)\s*(kg|g|ml|l|litres?|liters?)\b",
-            str(value or ""),
+            value,
             re.I,
         )
         if not match:

@@ -123,6 +123,17 @@ class TestTransformProducts:
         assert litre["package_quantity"] == Decimal("1500.0")
         assert litre["package_unit"] == "ml"
 
+    def test_calculates_total_weight_for_multipack(self) -> None:
+        multipack = self.raw_product(
+            name="Actimel Multifruit Yogurt Drinks 12 x 100g",
+            size="100g",
+        )
+
+        product = transform_products([multipack]).products.iloc[0]
+
+        assert product["package_quantity"] == Decimal("1200")
+        assert product["package_unit"] == "g"
+
     def test_calculates_count_pack_mass_from_serving_weight(self) -> None:
         count_pack = self.raw_product(
             size="6 per pack",
