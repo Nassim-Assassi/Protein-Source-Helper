@@ -4,8 +4,11 @@ from unittest.mock import MagicMock, Mock, call, patch
 import pandas as pd
 import pytest
 
-from scrapers.loader.load import LoadResult
-from scrapers.morrisons_scraper.extract import ExtractionResult
+from scrapers.etl_contracts import (
+    ExtractionResult,
+    LoadResult,
+    TransformResult,
+)
 from scrapers.orchestrators import retailer_etl
 
 
@@ -14,6 +17,7 @@ class TestRunRetailerEtl:
         raw_products = [{"listing_name": "Product"}]
         extraction = ExtractionResult(raw_products, 2, 1)
         transformed_products = pd.DataFrame([{"listing_name": "Product"}])
+        transformation = TransformResult(transformed_products, 0)
         result = LoadResult(1, 0, 1, 1)
         connection = MagicMock()
         connection_context = MagicMock()
@@ -25,7 +29,7 @@ class TestRunRetailerEtl:
             extract_products_with_stats=MagicMock(return_value=extraction)
         )
         transform_module = SimpleNamespace(
-            transform_products=MagicMock(return_value=transformed_products)
+            transform_products=MagicMock(return_value=transformation)
         )
 
         with (
@@ -73,11 +77,12 @@ class TestRunRetailerEtl:
     ) -> None:
         extraction = ExtractionResult([{"listing_name": "Product"}], 1, 0)
         products = pd.DataFrame([{"listing_name": "Product"}])
+        transformation = TransformResult(products, 0)
         extract_module = SimpleNamespace(
             extract_products_with_stats=MagicMock(return_value=extraction)
         )
         transform_module = SimpleNamespace(
-            transform_products=MagicMock(return_value=products)
+            transform_products=MagicMock(return_value=transformation)
         )
 
         with (
@@ -143,7 +148,9 @@ class TestRunRetailerEtl:
             extract_products_with_stats=MagicMock(return_value=extraction)
         )
         transform_module = SimpleNamespace(
-            transform_products=MagicMock(return_value=pd.DataFrame())
+            transform_products=MagicMock(
+                return_value=TransformResult(pd.DataFrame(), 1)
+            )
         )
 
         with (

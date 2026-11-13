@@ -4,7 +4,6 @@ Load data into the PostgreSQL database for an individual retailer scrape run.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 import pandas as pd
@@ -13,17 +12,8 @@ from psycopg import Cursor
 
 from scrapers.config import Config
 from scrapers.constants import PRODUCT_COLUMNS
+from scrapers.etl_contracts import LoadResult
 from scrapers.retailer_config import RetailerConfig
-
-
-@dataclass(frozen=True, slots=True)
-class LoadResult:
-    """Summarize data added during a scrape load."""
-
-    loaded_count: int
-    new_brand_count: int
-    new_product_count: int
-    new_retailer_category_count: int
 
 
 def _connect(config: type[Config]) -> psycopg.Connection[Any]:

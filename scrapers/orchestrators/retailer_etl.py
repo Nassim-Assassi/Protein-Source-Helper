@@ -7,7 +7,8 @@ from pathlib import Path
 from time import perf_counter
 
 from scrapers.config import Config
-from scrapers.loader.load import LoadResult, _connect, load_scrape
+from scrapers.etl_contracts import LoadResult
+from scrapers.loader.load import _connect, load_scrape
 from scrapers.logger_setup import logger
 from scrapers.orchestrators.scrape_run_helpers import (
     fail_scrape_run,
@@ -97,14 +98,14 @@ def run_retailer_etl(
         logger.info("Starting transform module for %s, batch %s.",
                     retailer_name, scrape_batch_id)
         started_at = perf_counter()
-        products = transform_products(extraction.products)
-        skipped_count = len(extraction.products) - len(products)
+        transformation = transform_products(extraction.products)
+        products = transformation.products
         logger.info(
             "Transformation finished in %s: %d products ready to load, %d rows "
             "skipped.",
             _format_duration(perf_counter() - started_at),
             len(products),
-            skipped_count,
+            transformation.skipped_count,
         )
         if products.empty:
             raise ValueError(

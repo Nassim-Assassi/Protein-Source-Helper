@@ -37,7 +37,7 @@ class TestTransformProducts:
         }
 
     def test_maps_product_to_loader_columns(self) -> None:
-        frame = transform_products([self.raw_product()])
+        frame = transform_products([self.raw_product()]).products
 
         assert tuple(frame.columns) == PRODUCT_COLUMNS
         product = frame.iloc[0]
@@ -57,7 +57,7 @@ class TestTransformProducts:
         raw["nutrition_table"] = {
             "protein_g": "31.2 g", "energy_kcal": "140 kcal"}
 
-        product = transform_products([raw]).iloc[0]
+        product = transform_products([raw]).products.iloc[0]
 
         assert product["protein_g"] == Decimal("31.2")
         assert product["energy_kcal"] == Decimal("140")
@@ -76,7 +76,7 @@ class TestTransformProducts:
 
         mj_energy, paired_energy = transform_products(
             [mj_product, paired_product]
-        )["energy_kcal"].tolist()
+        ).products["energy_kcal"].tolist()
 
         assert mj_energy == Decimal("1680") / Decimal("4.184")
         assert paired_energy == Decimal("401")
@@ -95,7 +95,7 @@ class TestTransformProducts:
         })
         raw["nutrition_table"] = {"protein_g": "<0.5 g"}
 
-        product = transform_products([raw]).iloc[0]
+        product = transform_products([raw]).products.iloc[0]
 
         for field in (
             "energy_kcal", "protein_g", "carbohydrates_g", "sugars_g",
@@ -116,7 +116,7 @@ class TestTransformProducts:
 
         kilogram, litre = transform_products(
             [kilogram_product, litre_product]
-        ).to_dict(orient="records")
+        ).products.to_dict(orient="records")
 
         assert kilogram["package_quantity"] == Decimal("1500.0")
         assert kilogram["package_unit"] == "g"
@@ -134,7 +134,7 @@ class TestTransformProducts:
         )
         count_pack["nutrition_table"] = {"serving_size_g": "50"}
 
-        product = transform_products([count_pack]).iloc[0]
+        product = transform_products([count_pack]).products.iloc[0]
 
         assert product["package_quantity"] == Decimal("300")
         assert product["package_unit"] == "g"
@@ -153,7 +153,7 @@ class TestTransformProducts:
         )
         cake["nutrition_table"] = {"serving_size_g": "32"}
 
-        product = transform_products([cake]).iloc[0]
+        product = transform_products([cake]).products.iloc[0]
 
         assert product["package_quantity"] == Decimal("256")
         assert product["package_unit"] == "g"
@@ -178,7 +178,7 @@ class TestTransformProducts:
         }
         bagels["nutrition_basis"] = "per_item"
 
-        product = transform_products([bagels]).iloc[0]
+        product = transform_products([bagels]).products.iloc[0]
 
         assert product["package_quantity"] == Decimal("6")
         assert product["package_unit"] == "each"
@@ -195,7 +195,7 @@ class TestTransformProducts:
             },
         )
 
-        product = transform_products([count_pack]).iloc[0]
+        product = transform_products([count_pack]).products.iloc[0]
 
         assert product["package_quantity"] == Decimal("6")
         assert product["package_unit"] == "each"
@@ -206,8 +206,10 @@ class TestTransformProducts:
         invalid = self.raw_product()
         invalid["product"]["offers"] = {"availability": "InStock"}
 
-        products = transform_products([valid, invalid])
+        result = transform_products([valid, invalid])
+        products = result.products
 
+        assert result.skipped_count == 1
         assert len(products) == 1
         assert products.iloc[0]["listing_name"] == (
             "Morrisons British Chicken Breast Fillets 400g"
@@ -217,8 +219,10 @@ class TestTransformProducts:
         valid = self.raw_product()
         incompatible = self.raw_product(size="500ml")
 
-        products = transform_products([valid, incompatible])
+        result = transform_products([valid, incompatible])
+        products = result.products
 
+        assert result.skipped_count == 1
         assert len(products) == 1
         assert products.iloc[0]["package_unit"] == "g"
 
@@ -226,7 +230,9 @@ class TestTransformProducts:
         invalid = self.raw_product()
         invalid["product"]["offers"] = {"availability": "InStock"}
 
-        products = transform_products([invalid])
+        result = transform_products([invalid])
+        products = result.products
 
+        assert result.skipped_count == 1
         assert products.empty
         assert tuple(products.columns) == PRODUCT_COLUMNS

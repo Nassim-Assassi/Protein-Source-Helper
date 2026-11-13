@@ -6,13 +6,13 @@ import json
 import re
 from copy import deepcopy
 from collections.abc import Mapping
-from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
+from scrapers.etl_contracts import ExtractionResult
 from scrapers.logger_setup import logger
 
 BASE_URL = "https://groceries.morrisons.com"
@@ -39,15 +39,6 @@ REQUEST_HEADERS = {
     "Accept-Language": "en-GB,en;q=0.9",
     "Referer": f"{BASE_URL}/",
 }
-
-
-@dataclass(frozen=True, slots=True)
-class ExtractionResult:
-    """Products extracted and counts for discovered and failed product URLs."""
-
-    products: list[Mapping[str, object]]
-    discovered_count: int
-    failed_count: int
 
 
 def _canonical_url(url: str) -> str:

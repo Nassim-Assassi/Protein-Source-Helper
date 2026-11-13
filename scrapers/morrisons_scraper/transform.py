@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 
 from scrapers.constants import PRODUCT_COLUMNS
+from scrapers.etl_contracts import TransformResult
 from scrapers.logger_setup import logger
 
 _NUTRITION_FIELDS = {
@@ -307,12 +308,17 @@ def _transform_product(raw: Mapping[str, Any]) -> dict[str, Any]:
 
 def transform_products(
         products: Iterable[Mapping[str, Any]],
-) -> pd.DataFrame:
+) -> TransformResult:
     """Normalize raw product mappings into the loader's product columns."""
     rows = []
+    skipped_count = 0
     for product in products:
         try:
             rows.append(_transform_product(product))
         except ValueError as error:
+            skipped_count += 1
             logger.debug("Skipping invalid Morrisons product: %s", error)
-    return pd.DataFrame(rows, columns=PRODUCT_COLUMNS)
+    return TransformResult(
+        products=pd.DataFrame(rows, columns=PRODUCT_COLUMNS),
+        skipped_count=skipped_count,
+    )
