@@ -79,8 +79,9 @@ GitHub Actions schedules scraper runs and captures run outcomes.
 
 ## 4. Data model
 
-The current SQL is maintained in [`database/schema.sql`](./database/schema.sql).
-It defines:
+The base schema is maintained in [`database/schema.sql`](./database/schema.sql),
+and the dashboard views are maintained in [`database/views.sql`](./database/views.sql).
+The base schema defines:
 
 - `retailer`: retailer name, URL, and active status.
 - `retailer_category`: category names scoped to a retailer.

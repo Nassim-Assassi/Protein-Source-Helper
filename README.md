@@ -45,17 +45,19 @@ Asda; the final third retailer remains to be selected.
 
 ## Data and comparison conventions
 
-The database, including its materialized view and dashboard view, is defined
-in [`database/schema.sql`](./database/schema.sql). It creates retailers,
-retailer-scoped categories, brands, canonical products, retailer listings,
-scrape batches, retailer-specific scrape runs, and snapshots. One batch ID
-groups retailer runs launched together. Each snapshot combines one retailer
-listing's price and nutrition data collected in a single run. Primary key IDs
-use incrementing identity values: `snapshot_id` is `bigint`, and all other IDs
-are `int`. A retailer listing refers to its retailer and canonical product,
-and may refer to a category from that retailer's taxonomy. Listing identity is
-retailer-specific: the retailer and external listing ID are unique when the
-ID is present; when it is absent, the retailer and source URL are unique.
+The base database schema is defined in
+[`database/schema.sql`](./database/schema.sql), and the dashboard views are
+defined in [`database/views.sql`](./database/views.sql). The schema creates
+retailers, retailer-scoped categories, brands, canonical products, retailer
+listings, scrape batches, retailer-specific scrape runs, and snapshots. One
+batch ID groups retailer runs launched together. Each snapshot combines one
+retailer listing's price and nutrition data collected in a single run. Primary
+key IDs use incrementing identity values: `snapshot_id` is `bigint`, and all
+other IDs are `int`. A retailer listing refers to its retailer and canonical
+product, and may refer to a category from that retailer's taxonomy. Listing
+identity is retailer-specific: the retailer and external listing ID are
+unique when the ID is present; when it is absent, the retailer and source URL
+are unique.
 
 - Normalize nutrition values in the ETL before inserting snapshots. Store
   values per 100 g, per 100 ml, or per item, and record the basis in
@@ -97,12 +99,17 @@ ID is present; when it is absent, the retailer and source URL are unique.
 
 ## Repository contents
 
-- [`database/schema.sql`](./database/schema.sql) — full database definition:
-  tables, constraints, indexes, `current_data_mat`, and `current_data`.
+- [`database/schema.sql`](./database/schema.sql) — base tables, constraints,
+  and indexes.
+- [`database/views.sql`](./database/views.sql) — `current_data_mat`, its
+  indexes, and `current_data`; can be reapplied without resetting the tables.
 - [`database/initial_database_setup.sh`](./database/initial_database_setup.sh)
-  — applies the full schema using the database settings in the project-root
-  `.env` file. This is a destructive reset that drops existing tables and
-  dependent objects; the SQL runs in one transaction so failures roll back.
+  — applies the base schema and views using the database settings in the
+  project-root `.env` file. This is a destructive reset that drops existing
+  tables and dependent objects; the SQL runs in one transaction so failures
+  roll back.
+- [`database/recreate_views.sh`](./database/recreate_views.sh) — recreates
+  only the views, preserving base tables and data.
 - [`database/refresh_materialised_view.sh`](./database/refresh_materialised_view.sh)
   — refreshes `current_data_mat` concurrently using the same `.env` settings.
 - [`database/refresh_materialised_view.sql`](./database/refresh_materialised_view.sql)
@@ -130,6 +137,8 @@ private and do not commit database credentials.
   `sh database/initial_database_setup.sh` from the project root. This drops
   existing application tables and dependent objects before recreating the
   schema, so do not run it to refresh data or against data you need to keep.
+  To recreate only the views without resetting data, run
+  `sh database/recreate_views.sh`.
 3. After loading or updating snapshots, refresh the materialized data by
   running `sh database/refresh_materialised_view.sh`. The dashboard should
   query `public.current_data`; its 26-hour filter is evaluated on each query.
