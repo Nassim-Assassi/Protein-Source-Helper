@@ -96,7 +96,7 @@ def _crawl_category_product_urls(page) -> set[str]:
     product_urls = set()
     previous_height = -1
     unchanged_scrolls = 0
-    for _ in range(20):
+    while True:
         page.evaluate(
             "window.scrollTo(0, document.body.scrollHeight)")
         page.wait_for_timeout(500)

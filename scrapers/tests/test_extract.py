@@ -309,6 +309,25 @@ class TestNavigate:
 
 
 class TestCrawlCategoryProductUrls:
+    def test_continues_scrolling_past_twenty_iterations(self) -> None:
+        page = Mock()
+        late_product_link = (
+            "https://groceries.morrisons.com/products/example/123"
+        )
+        page.evaluate.side_effect = [
+            value
+            for height in range(1, 26)
+            for value in (None, height)
+        ] + [None, 25, None, 25]
+        page.locator.return_value.evaluate_all.side_effect = (
+            [[] for _ in range(24)]
+            + [[late_product_link], [], []]
+        )
+
+        product_urls = extract._crawl_category_product_urls(page)
+
+        assert product_urls == {late_product_link}
+
     def test_keeps_product_links_that_disappear_after_scrolling(self) -> None:
         page = Mock()
         product_link = (
