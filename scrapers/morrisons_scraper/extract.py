@@ -6,6 +6,8 @@ import json
 import re
 from copy import deepcopy
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock, local
 from time import perf_counter
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -32,6 +34,7 @@ EXCLUDED_CATEGORY_SLUGS = {
     "beer-wines-spirits",
 }
 EXTRACTION_PROGRESS_INTERVAL = 100
+PRODUCT_EXTRACTION_WORKERS = 8
 REQUEST_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -577,11 +580,25 @@ def extract_products_with_stats() -> ExtractionResult:
     products = []
     failed_count = 0
     extraction_started_at = perf_counter()
-    with requests.Session() as session:
-        for processed_count, (url, category_name) in enumerate(
-            sorted(product_categories.items()), start=1
+    thread_state = local()
+    sessions = []
+    sessions_lock = Lock()
+
+    def extract_product(item: tuple[str, str]) -> Mapping[str, object] | None:
+        url, category_name = item
+        session = getattr(thread_state, "session", None)
+        if session is None:
+            session = requests.Session()
+            thread_state.session = session
+            with sessions_lock:
+                sessions.append(session)
+        return _extract_product(session, url, category_name)
+
+    sorted_products = sorted(product_categories.items())
+    with ThreadPoolExecutor(max_workers=PRODUCT_EXTRACTION_WORKERS) as executor:
+        for processed_count, product in enumerate(
+            executor.map(extract_product, sorted_products), start=1
         ):
-            product = _extract_product(session, url, category_name)
             if product is not None:
                 products.append(product)
             else:
@@ -595,6 +612,8 @@ def extract_products_with_stats() -> ExtractionResult:
                     failed_count,
                     perf_counter() - extraction_started_at,
                 )
+    for session in sessions:
+        session.close()
     logger.debug(
         "Product-page extraction finished in %.1fs: %d products extracted; "
         "%d failed.",
