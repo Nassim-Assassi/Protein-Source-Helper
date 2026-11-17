@@ -1,4 +1,4 @@
-UPDATE public.scrape_batch
+UPDATE protein_source_helper.scrape_batch
 SET
     scrape_batch_status = :'batch_status',
     scrape_batch_finished_at = clock_timestamp(),

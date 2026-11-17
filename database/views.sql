@@ -1,16 +1,16 @@
 -- Current retailer data and dashboard metrics
 
-DROP VIEW IF EXISTS public.current_data;
-DROP MATERIALIZED VIEW IF EXISTS public.current_data_mat;
+DROP VIEW IF EXISTS protein_source_helper.current_data;
+DROP MATERIALIZED VIEW IF EXISTS protein_source_helper.current_data_mat;
 
-CREATE MATERIALIZED VIEW public.current_data_mat AS
+CREATE MATERIALIZED VIEW protein_source_helper.current_data_mat AS
 WITH latest_successful_run AS (
     SELECT DISTINCT ON (retailer_id)
         scrape_run_id,
         retailer_id,
         scrape_run_started_at,
         scrape_run_finished_at
-    FROM public.scrape_run
+    FROM protein_source_helper.scrape_run
     WHERE
         scrape_run_status = 'succeeded'
         AND scrape_run_finished_at
@@ -89,21 +89,21 @@ SELECT
         END, 2
     ) AS total_protein_grams_per_currency_unit
 FROM latest_successful_run AS latest
-INNER JOIN public.snapshot AS s
+INNER JOIN protein_source_helper.snapshot AS s
     ON
         latest.scrape_run_id = s.scrape_run_id
         AND latest.retailer_id = s.retailer_id
-INNER JOIN public.retailer_listing AS rl
+INNER JOIN protein_source_helper.retailer_listing AS rl
     ON
         s.retailer_listing_id = rl.retailer_listing_id
         AND s.retailer_id = rl.retailer_id
-INNER JOIN public.retailer AS r
+INNER JOIN protein_source_helper.retailer AS r
     ON rl.retailer_id = r.retailer_id
-LEFT JOIN public.canonical_product AS cp
+LEFT JOIN protein_source_helper.canonical_product AS cp
     ON rl.canonical_product_id = cp.canonical_product_id
-LEFT JOIN public.brand AS b
+LEFT JOIN protein_source_helper.brand AS b
     ON cp.brand_id = b.brand_id
-LEFT JOIN public.retailer_category AS rc
+LEFT JOIN protein_source_helper.retailer_category AS rc
     ON
         rl.retailer_category_id = rc.retailer_category_id
         AND rl.retailer_id = rc.retailer_id
@@ -113,17 +113,17 @@ WHERE
     AND s.snapshot_out_of_stock = false;
 
 CREATE UNIQUE INDEX current_data_mat_listing_id_idx
-ON public.current_data_mat (retailer_listing_id);
+ON protein_source_helper.current_data_mat (retailer_listing_id);
 
 CREATE INDEX current_data_mat_protein_per_cost_idx
-ON public.current_data_mat (
+ON protein_source_helper.current_data_mat (
     total_protein_grams_per_currency_unit DESC NULLS LAST
 );
 
 CREATE INDEX current_data_mat_canonical_id_idx
-ON public.current_data_mat (canonical_product_id);
+ON protein_source_helper.current_data_mat (canonical_product_id);
 
-CREATE VIEW public.current_data AS
+CREATE VIEW protein_source_helper.current_data AS
 SELECT
     canonical_product_id,
     canonical_product_name,
@@ -161,5 +161,5 @@ SELECT
     scrape_run_finished_at,
     price_per_100_units,
     total_protein_grams_per_currency_unit
-FROM public.current_data_mat
+FROM protein_source_helper.current_data_mat
 WHERE scrape_run_finished_at >= statement_timestamp() - interval '26 hours';

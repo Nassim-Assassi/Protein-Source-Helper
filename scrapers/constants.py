@@ -2,6 +2,8 @@
 Constants for the scrapers module.
 """
 
+DATABASE_SCHEMA = "protein_source_helper"
+
 PRODUCT_COLUMNS = (
     "listing_name",
     "source_url",

@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+from scrapers.constants import DATABASE_SCHEMA
 from scrapers.etl_contracts import ScrapeRunMetrics
 from scrapers.orchestrators import scrape_run_helpers
 from scrapers.retailer_config import RetailerConfig
@@ -26,7 +27,7 @@ class TestInitiateScrapeRun:
 
         assert run_id == 17
         query, parameters = cursor.execute.call_args.args
-        assert "INSERT INTO public.scrape_run" in query
+        assert f"INSERT INTO {DATABASE_SCHEMA}.scrape_run" in query
         assert "'running'" in query
         assert parameters == (42, 3)
         connection.transaction.assert_called_once()

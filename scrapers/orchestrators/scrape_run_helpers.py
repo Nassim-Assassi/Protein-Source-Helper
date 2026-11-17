@@ -1,6 +1,7 @@
 """Create and fail scrape runs independently from product loading."""
 
 from scrapers.config import Config
+from scrapers.constants import DATABASE_SCHEMA
 from scrapers.etl_contracts import ScrapeRunMetrics
 from scrapers.loader.load import _connect, _resolve_retailer_id
 from scrapers.retailer_config import RetailerConfig
@@ -12,8 +13,8 @@ def initiate_scrape_run(scrape_batch_id: int, retailer: RetailerConfig) -> int:
         with connection.transaction(), connection.cursor() as cursor:
             retailer_id = _resolve_retailer_id(cursor, retailer)
             cursor.execute(
-                """
-				INSERT INTO public.scrape_run (
+                f"""
+                INSERT INTO {DATABASE_SCHEMA}.scrape_run (
 					scrape_batch_id, retailer_id, scrape_run_status
 				)
 				VALUES (%s, %s, 'running')
@@ -39,8 +40,8 @@ def fail_scrape_run(
     with _connect(Config) as connection:
         with connection.transaction(), connection.cursor() as cursor:
             cursor.execute(
-                """
-				UPDATE public.scrape_run
+                f"""
+                UPDATE {DATABASE_SCHEMA}.scrape_run
 				SET scrape_run_status = 'failed',
 					scrape_run_finished_at = clock_timestamp(),
                     scrape_run_error_message = %s,

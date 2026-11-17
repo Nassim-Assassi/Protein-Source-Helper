@@ -12,7 +12,7 @@ import psycopg
 from psycopg import Cursor
 
 from scrapers.config import Config
-from scrapers.constants import PRODUCT_COLUMNS
+from scrapers.constants import DATABASE_SCHEMA, PRODUCT_COLUMNS
 from scrapers.etl_contracts import LoadResult, ScrapeRunMetrics
 from scrapers.logger_setup import logger
 from scrapers.retailer_config import RetailerConfig
@@ -52,8 +52,8 @@ def _fetch_required_id(cursor: Cursor[Any], lookup_label: str, query: str, param
 def _resolve_brand_id(cursor: Cursor[Any], brand_name: str) -> tuple[int, bool]:
     """Resolve a brand by name, inserting it if necessary. Return its ID and whether it was created."""
     cursor.execute(
-        """
-        INSERT INTO public.brand (brand_name)
+        f"""
+        INSERT INTO {DATABASE_SCHEMA}.brand (brand_name)
         VALUES (%s)
         ON CONFLICT (brand_name) DO NOTHING
         RETURNING brand_id
@@ -66,7 +66,7 @@ def _resolve_brand_id(cursor: Cursor[Any], brand_name: str) -> tuple[int, bool]:
     return _fetch_required_id(
         cursor,
         "brand",
-        "SELECT brand_id FROM public.brand WHERE brand_name = %s",
+        f"SELECT brand_id FROM {DATABASE_SCHEMA}.brand WHERE brand_name = %s",
         (brand_name,),
     ), False
 
@@ -87,8 +87,8 @@ def _resolve_canonical_product_id(
         else f"{retailer_name}_{retailer_listing_name}"
     )
     cursor.execute(
-        """
-        INSERT INTO public.canonical_product (
+        f"""
+        INSERT INTO {DATABASE_SCHEMA}.canonical_product (
             canonical_product_name, barcode_gtin, brand_id
         )
         VALUES (%s, %s, %s)
@@ -110,13 +110,13 @@ def _resolve_canonical_product_id(
     if brand_id is None:
         query = f"""
             SELECT canonical_product_id
-            FROM public.canonical_product
+            FROM {DATABASE_SCHEMA}.canonical_product
             WHERE {match_condition}
             """
         params = (match_value,)
     else:
         query = f"""
-            UPDATE public.canonical_product
+            UPDATE {DATABASE_SCHEMA}.canonical_product
             SET brand_id = COALESCE(brand_id, %s)
             WHERE {match_condition}
             RETURNING canonical_product_id
@@ -135,8 +135,8 @@ def _resolve_retailer_category_id(
     cursor: Cursor[Any], retailer_id: int, category_name: str
 ) -> tuple[int, bool]:
     cursor.execute(
-        """
-        INSERT INTO public.retailer_category (
+        f"""
+        INSERT INTO {DATABASE_SCHEMA}.retailer_category (
             retailer_id, retailer_category_name
         )
         VALUES (%s, %s)
@@ -151,9 +151,9 @@ def _resolve_retailer_category_id(
     return _fetch_required_id(
         cursor,
         "retailer category",
-        """
+        f"""
         SELECT retailer_category_id
-        FROM public.retailer_category
+        FROM {DATABASE_SCHEMA}.retailer_category
         WHERE retailer_id = %s AND retailer_category_name = %s
         """,
         (retailer_id, category_name),
@@ -161,12 +161,24 @@ def _resolve_retailer_category_id(
 
 
 def _resolve_retailer_id(cursor: Cursor[Any], retailer: RetailerConfig) -> int:
-    """Resolve a retailer by name, inserting it if necessary."""
+    """Resolve a retailer by name or URL, inserting it if necessary."""
     cursor.execute(
-        """
-        INSERT INTO public.retailer (retailer_name, retailer_url)
+        f"""
+        SELECT retailer_id
+        FROM {DATABASE_SCHEMA}.retailer
+        WHERE retailer_name = %s OR retailer_url = %s
+        """,
+        (retailer.name, retailer.url),
+    )
+    result = cursor.fetchone()
+    if result is not None:
+        return result[0]
+
+    cursor.execute(
+        f"""
+        INSERT INTO {DATABASE_SCHEMA}.retailer (retailer_name, retailer_url)
         VALUES (%s, %s)
-        ON CONFLICT (retailer_name) DO NOTHING
+        ON CONFLICT DO NOTHING
         RETURNING retailer_id
         """,
         (retailer.name, retailer.url),
@@ -177,8 +189,12 @@ def _resolve_retailer_id(cursor: Cursor[Any], retailer: RetailerConfig) -> int:
     return _fetch_required_id(
         cursor,
         "retailer",
-        "SELECT retailer_id FROM public.retailer WHERE retailer_name = %s",
-        (retailer.name,),
+        f"""
+        SELECT retailer_id
+        FROM {DATABASE_SCHEMA}.retailer
+        WHERE retailer_name = %s OR retailer_url = %s
+        """,
+        (retailer.name, retailer.url),
     )
 
 
@@ -202,8 +218,8 @@ def _resolve_retailer_listing_id(
     )
     if external_id is not None:
         cursor.execute(
-            """
-            INSERT INTO public.retailer_listing (
+            f"""
+            INSERT INTO {DATABASE_SCHEMA}.retailer_listing (
                 canonical_product_id, retailer_category_id, retailer_id,
                 retailer_listing_external_id, retailer_listing_name,
                 retailer_listing_source_url, retailer_listing_image_url
@@ -225,8 +241,8 @@ def _resolve_retailer_listing_id(
         )
     else:
         cursor.execute(
-            """
-            INSERT INTO public.retailer_listing (
+            f"""
+            INSERT INTO {DATABASE_SCHEMA}.retailer_listing (
                 canonical_product_id, retailer_category_id, retailer_id,
                 retailer_listing_external_id, retailer_listing_name,
                 retailer_listing_source_url, retailer_listing_image_url
@@ -271,8 +287,8 @@ def _load_snapshot(
 ) -> bool:
     """Insert a product snapshot and report whether a row was inserted."""
     cursor.execute(
-        """
-        INSERT INTO public.snapshot (
+        f"""
+        INSERT INTO {DATABASE_SCHEMA}.snapshot (
             retailer_id, retailer_listing_id, scrape_run_id,
             snapshot_price, snapshot_package_quantity,
             snapshot_package_unit, snapshot_energy_kcal,
@@ -423,8 +439,8 @@ def load_scrape(
         run_metrics.loaded_count = loaded_count
         run_metrics.load_duration_seconds = perf_counter() - load_started_at
         cursor.execute(
-            """
-            UPDATE public.scrape_run
+            f"""
+            UPDATE {DATABASE_SCHEMA}.scrape_run
             SET scrape_run_status = 'succeeded',
                 scrape_run_finished_at = clock_timestamp(),
                 scrape_run_discovered_count = %s,

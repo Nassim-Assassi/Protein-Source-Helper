@@ -1,4 +1,4 @@
-ALTER TABLE public.scrape_run
+ALTER TABLE protein_source_helper.scrape_run
     ADD COLUMN IF NOT EXISTS scrape_run_discovered_count int
         CHECK (scrape_run_discovered_count >= 0),
     ADD COLUMN IF NOT EXISTS scrape_run_extracted_count int
