@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - ".github/workflows/morrisons_loader_integration_test.yml"
       - "scrapers/loader/**"
       - "scrapers/constants.py"
       - "scrapers/etl_contracts.py"
@@ -13,6 +14,7 @@ on:
 
   pull_request:
     paths:
+      - ".github/workflows/morrisons_loader_integration_test.yml"
       - "scrapers/loader/**"
       - "scrapers/constants.py"
       - "scrapers/etl_contracts.py"
