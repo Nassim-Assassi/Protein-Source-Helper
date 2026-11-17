@@ -22,7 +22,7 @@ if TEST_ENV.exists():
     load_dotenv(TEST_ENV, override=False)
 
 
-FIXTURE_PATH = Path(__file__).with_name("load_test_products.csv")
+FIXTURE_PATH = Path(__file__).with_name("morrisons_test_loader_integration_fixture.csv")
 RETAILER = RetailerConfig(
     name="Morrisons",
     url="https://groceries.morrisons.com",
