@@ -1,0 +1,38 @@
+name: Morrisons Loader Integration Test
+
+on:
+  workflow_dispatch:
+
+env:
+  DATABASE_HOST: ${{ secrets.INTEGRATION_TESTING_DATABASE_HOST }}
+  DATABASE_PORT: ${{ secrets.INTEGRATION_TESTING_DATABASE_PORT }}
+  DATABASE_NAME: ${{ secrets.INTEGRATION_TESTING_DATABASE_NAME }}
+  DATABASE_USER: ${{ secrets.INTEGRATION_TESTING_DATABASE_USER }}
+  DATABASE_PASSWORD: ${{ secrets.INTEGRATION_TESTING_DATABASE_PASSWORD }}
+  INTEGRATION_TESTING_DATABASE: "true"
+
+jobs:
+  loader_integration_test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Reset integration database schema
+        run: bash database/initial_database_setup.sh
+
+      - name: Run loader integration test
+        run: pytest scrapers/integration_test -q
