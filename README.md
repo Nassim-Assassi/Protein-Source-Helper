@@ -114,6 +114,9 @@ are unique.
   — refreshes `current_data_mat` concurrently using the same `.env` settings.
 - [`database/refresh_materialised_view.sql`](./database/refresh_materialised_view.sql)
   — contains the concurrent refresh statement.
+- [`database/migrate_to_protein_source_helper.sh`](./database/migrate_to_protein_source_helper.sh)
+  — moves existing application tables and views from `public` without
+  dropping their data.
 - [`morrisons_mvp_links.txt`](./morrisons_mvp_links.txt) —
   Morrisons product links for initial exploration.
 - [`morrisons_product_categories.csv`](./morrisons_product_categories.csv) —
@@ -133,15 +136,23 @@ shell-compatible assignments for `DATABASE_HOST`, `DATABASE_PORT`,
 private and do not commit database credentials.
 
 1. Create a PostgreSQL database and configure the required values in `.env`.
-2. Initialize the database by running
+2. For an existing installation, run
+  `sh database/migrate_to_protein_source_helper.sh` once before deploying the
+  updated scraper. This moves the application objects to
+  `protein_source_helper` without dropping data. Ensure the scraper and
+  dashboard roles have `USAGE` on that schema and the required table
+  privileges.
+3. For a fresh database, initialize it by running
   `sh database/initial_database_setup.sh` from the project root. This drops
-  existing application tables and dependent objects before recreating the
-  schema, so do not run it to refresh data or against data you need to keep.
+  existing application tables and dependent objects in
+  `protein_source_helper` before recreating the schema, so do not run it to
+  refresh data or against data you need to keep.
   To recreate only the views without resetting data, run
   `sh database/recreate_views.sh`.
-3. After loading or updating snapshots, refresh the materialized data by
+4. After loading or updating snapshots, refresh the materialized data by
   running `sh database/refresh_materialised_view.sh`. The dashboard should
-  query `public.current_data`; its 26-hour filter is evaluated on each query.
+  query `protein_source_helper.current_data`; its 26-hour filter is evaluated
+  on each query.
 
 Refresh scheduling is planned for the scraper logic and is not yet automated
 by these database scripts.
