@@ -3,24 +3,21 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 PROJECT_DIR=$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)
-ENV_FILE="$PROJECT_DIR/.env"
+ENV_FILE="${1:-$PROJECT_DIR/.env}"
 SCHEMA_FILE="$SCRIPT_DIR/schema.sql"
 VIEWS_FILE="$SCRIPT_DIR/views.sql"
 
-if [ ! -f "$ENV_FILE" ]; then
-  printf 'Missing environment file: %s\n' "$ENV_FILE" >&2
-  exit 1
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  . "$ENV_FILE"
+  set +a
 fi
 
-set -a
-. "$ENV_FILE"
-set +a
-
-: "${DATABASE_HOST:?DATABASE_HOST is required in .env}"
-: "${DATABASE_PORT:?DATABASE_PORT is required in .env}"
-: "${DATABASE_NAME:?DATABASE_NAME is required in .env}"
-: "${DATABASE_USER:?DATABASE_USER is required in .env}"
-: "${DATABASE_PASSWORD:?DATABASE_PASSWORD is required in .env}"
+: "${DATABASE_HOST:?DATABASE_HOST is required in an env file or environment}"
+: "${DATABASE_PORT:?DATABASE_PORT is required in an env file or environment}"
+: "${DATABASE_NAME:?DATABASE_NAME is required in an env file or environment}"
+: "${DATABASE_USER:?DATABASE_USER is required in an env file or environment}"
+: "${DATABASE_PASSWORD:?DATABASE_PASSWORD is required in an env file or environment}"
 
 PGPASSWORD=$DATABASE_PASSWORD
 PGSSLMODE=prefer
