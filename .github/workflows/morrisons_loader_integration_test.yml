@@ -1,6 +1,24 @@
 name: Morrisons Loader Integration Test
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "scrapers/loader/**"
+      - "scrapers/constants.py"
+      - "scrapers/etl_contracts.py"
+      - "scrapers/integration_test/**"
+      - "database/**"
+
+  pull_request:
+    paths:
+      - "scrapers/loader/**"
+      - "scrapers/constants.py"
+      - "scrapers/etl_contracts.py"
+      - "scrapers/integration_test/**"
+      - "database/**"
+
   workflow_dispatch:
 
 env:
