@@ -7,6 +7,11 @@ on:
     paths:
       - 'static_summary_pages/**'
       - '.github/workflows/static_summary_pages.yml'
+  workflow_run:
+    workflows:
+      - 'Scrapers Batch Workflow'
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -20,6 +25,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
