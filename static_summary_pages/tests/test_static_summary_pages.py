@@ -99,6 +99,8 @@ class TestDashboardDataPayload:
         normal = payload["rankings"]["balanced"][0]
         assert normal["name"]
         assert normal["source_url"].startswith("https://")
+        assert "cost_per_100g_protein" in normal
+        assert "price_per_protein_g" not in normal
 
         empty_name = {**normal, "name": None}
         malicious_name = {**normal, "name": '<img src=x onerror="alert(1)">'}

@@ -212,7 +212,7 @@ function renderTable() {
     row.append(createElement("td", "number", `${formatNumber(product.protein_g)} g`));
     row.append(createElement("td", "number", formatCurrency(product.cost_per_100_kcal)));
     row.append(createElement("td", "number", `${formatNumber(product.protein_g_per_100_kcal)} g`));
-    row.append(createElement("td", "number", formatCurrency(product.price_per_protein_g)));
+    row.append(createElement("td", "number", formatCurrency(product.cost_per_100g_protein)));
     row.append(createElement("td", "number score-col", formatNumber(product.balanced_value_score)));
     return row;
   }));

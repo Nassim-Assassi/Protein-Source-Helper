@@ -106,7 +106,7 @@ current_metrics AS (
             CASE
                 WHEN s.snapshot_protein_g > 0
                     THEN
-                        s.snapshot_price / CASE
+                        (100.0 * s.snapshot_price) / CASE
                             WHEN
                                 s.snapshot_nutrition_basis = 'per_item'
                                 AND s.snapshot_package_unit = 'each'
@@ -127,7 +127,7 @@ current_metrics AS (
                                     * s.snapshot_package_quantity
                         END
             END, 4
-        ) AS price_per_protein_g
+        ) AS cost_per_100g_protein
     FROM latest_successful_run AS latest
     INNER JOIN protein_source_helper.snapshot AS s
         ON
@@ -170,11 +170,12 @@ ranked_data AS (
                 )
         END AS protein_g_per_100_kcal_rank,
         CASE
-            WHEN current_metrics.price_per_protein_g IS NOT null
+            WHEN current_metrics.cost_per_100g_protein IS NOT null
                 THEN rank() OVER (
-                    ORDER BY current_metrics.price_per_protein_g ASC NULLS LAST
+                    ORDER BY
+                        current_metrics.cost_per_100g_protein ASC NULLS LAST
                 )
-        END AS price_per_protein_g_rank
+        END AS cost_per_100g_protein_rank
     FROM current_metrics
 ),
 
@@ -223,23 +224,24 @@ normalized_data AS (
                     END
         END AS protein_g_per_100_kcal_normalized_score,
         CASE
-            WHEN ranked_data.price_per_protein_g IS NOT null
+            WHEN ranked_data.cost_per_100g_protein IS NOT null
                 THEN
                     CASE
-                        WHEN count(ranked_data.price_per_protein_g) OVER () = 1
+                        WHEN
+                            count(ranked_data.cost_per_100g_protein) OVER () = 1
                             THEN 100.0
                         ELSE
                             100.0 * (
                                 1.0
-                                - (ranked_data.price_per_protein_g_rank - 1.0)
+                                - (ranked_data.cost_per_100g_protein_rank - 1.0)
                                 / (
-                                    count(ranked_data.price_per_protein_g)
+                                    count(ranked_data.cost_per_100g_protein)
                                         OVER ()
                                     - 1
                                 )
                             )
                     END
-        END AS price_per_protein_g_normalized_score
+        END AS cost_per_100g_protein_normalized_score
     FROM ranked_data
 ),
 
@@ -326,9 +328,9 @@ SELECT
     protein_g_per_100_kcal,
     protein_g_per_100_kcal_rank,
     protein_g_per_100_kcal_normalized_score,
-    price_per_protein_g,
-    price_per_protein_g_rank,
-    price_per_protein_g_normalized_score,
+    cost_per_100g_protein,
+    cost_per_100g_protein_rank,
+    cost_per_100g_protein_normalized_score,
     cost_saving_value_score,
     balanced_value_score,
     protein_focused_value_score
@@ -342,9 +344,9 @@ ON protein_source_helper.current_data_mat (
     protein_g_per_100_kcal DESC NULLS LAST
 );
 
-CREATE INDEX current_data_mat_price_per_protein_g_idx
+CREATE INDEX current_data_mat_cost_per_100g_protein_idx
 ON protein_source_helper.current_data_mat (
-    price_per_protein_g ASC NULLS LAST
+    cost_per_100g_protein ASC NULLS LAST
 );
 
 CREATE INDEX current_data_mat_canonical_id_idx
@@ -392,9 +394,9 @@ SELECT
     protein_g_per_100_kcal,
     protein_g_per_100_kcal_rank,
     protein_g_per_100_kcal_normalized_score,
-    price_per_protein_g,
-    price_per_protein_g_rank,
-    price_per_protein_g_normalized_score,
+    cost_per_100g_protein,
+    cost_per_100g_protein_rank,
+    cost_per_100g_protein_normalized_score,
     cost_saving_value_score,
     balanced_value_score,
     protein_focused_value_score

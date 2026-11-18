@@ -87,10 +87,12 @@ def as_product(row):
         "protein_g_per_100_kcal_normalized_score": valid_number(
             row["protein_g_per_100_kcal_normalized_score"]
         ),
-        "price_per_protein_g": valid_number(row["price_per_protein_g"]),
-        "price_per_protein_g_rank": valid_number(row["price_per_protein_g_rank"]),
-        "price_per_protein_g_normalized_score": valid_number(
-            row["price_per_protein_g_normalized_score"]
+        "cost_per_100g_protein": valid_number(row["cost_per_100g_protein"]),
+        "cost_per_100g_protein_rank": valid_number(
+            row["cost_per_100g_protein_rank"]
+        ),
+        "cost_per_100g_protein_normalized_score": valid_number(
+            row["cost_per_100g_protein_normalized_score"]
         ),
         "cost_saving_value_score": valid_number(row["cost_saving_value_score"]),
         "balanced_value_score": valid_number(row["balanced_value_score"]),
@@ -195,7 +197,7 @@ def export_dashboard(output_path: Path = DASHBOARD_DATA) -> dict:
 
     def ranked_products(field):
         valid = [row for row in rows if valid_number(row[field]) is not None]
-        if field in ("cost_per_100_kcal", "price_per_protein_g"):
+        if field in ("cost_per_100_kcal", "cost_per_100g_protein"):
             valid.sort(key=lambda row: (
                 row[field], row["retailer_listing_id"]))
         else:
@@ -232,8 +234,8 @@ def export_dashboard(output_path: Path = DASHBOARD_DATA) -> dict:
             "average_protein_focused_value_score": mean(
                 rows, "protein_focused_value_score"
             ),
-            "average_cost_per_100g_protein": mean_scaled(
-                rows, "price_per_protein_g", 100
+            "average_cost_per_100g_protein": mean(
+                rows, "cost_per_100g_protein"
             ),
         },
         "coverage": {
@@ -254,7 +256,7 @@ def export_dashboard(output_path: Path = DASHBOARD_DATA) -> dict:
                 "protein_focused_value_score"
             ),
             "cost_per_100_kcal": ranked_products("cost_per_100_kcal"),
-            "price_per_protein_g": ranked_products("price_per_protein_g"),
+            "cost_per_100g_protein": ranked_products("cost_per_100g_protein"),
         },
     }
 
