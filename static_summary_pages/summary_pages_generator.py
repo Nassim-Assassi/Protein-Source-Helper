@@ -73,8 +73,8 @@ def as_product(row):
         "price": valid_number(row["snapshot_price"]),
         "package_quantity": valid_number(row["snapshot_package_quantity"]),
         "package_unit": row["snapshot_package_unit"],
-        "energy_kcal": valid_number(row["snapshot_energy_kcal"]),
-        "protein_g": valid_number(row["snapshot_protein_g"]),
+        "energy_kcal": valid_number(row["total_energy_kcal"]),
+        "protein_g": valid_number(row["total_protein_g"]),
         "cost_per_100_kcal": valid_number(row["cost_per_100_kcal"]),
         "cost_per_100_kcal_normalized_score": valid_number(
             row["cost_per_100_kcal_normalized_score"]

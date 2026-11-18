@@ -1,4 +1,6 @@
-from static_summary_pages.summary_pages_generator import export_dashboard
+from static_summary_pages.summary_pages_generator import (
+    export_dashboard,
+)
 import json
 import sys
 from pathlib import Path
@@ -71,6 +73,11 @@ class TestStaticDashboardMarkup:
         image_column = html.index('aria-label="Product image"')
         name_column = html.index("<th>Product/listing</th>")
         assert image_column < name_column
+        assert "Calories (kcal)" in html
+        assert "Protein (g)" in html
+        assert html.index("</table>") < html.index(
+            'class="scope-note">Calories and protein are totals'
+        )
 
     def test_scope_note_is_removed(self) -> None:
         html = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
@@ -105,6 +112,9 @@ class TestDashboardDataPayload:
         normal = payload["rankings"]["value"][0]
         assert normal["name"]
         assert normal["source_url"].startswith("https://")
+        assert "nutrition_basis" not in normal
+        assert normal["energy_kcal"] > 0
+        assert normal["protein_g"] > 0
         assert "cost_per_100g_protein" in normal
         assert "price_per_protein_g" not in normal
         assert 0 <= normal["value_score"] <= 100

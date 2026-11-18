@@ -56,6 +56,28 @@ current_metrics AS (
         latest.scrape_run_finished_at,
         round(
             CASE
+                WHEN s.snapshot_nutrition_basis = 'per_item'
+                    THEN s.snapshot_energy_kcal * s.snapshot_package_quantity
+                WHEN s.snapshot_nutrition_basis IN ('per_100g', 'per_100ml')
+                    THEN
+                        s.snapshot_energy_kcal * s.snapshot_package_quantity
+                        / 100.0
+            END,
+            2
+        ) AS total_energy_kcal,
+        round(
+            CASE
+                WHEN s.snapshot_nutrition_basis = 'per_item'
+                    THEN s.snapshot_protein_g * s.snapshot_package_quantity
+                WHEN s.snapshot_nutrition_basis IN ('per_100g', 'per_100ml')
+                    THEN
+                        s.snapshot_protein_g * s.snapshot_package_quantity
+                        / 100.0
+            END,
+            2
+        ) AS total_protein_g,
+        round(
+            CASE
                 WHEN s.snapshot_energy_kcal > 0
                     THEN
                         CASE
@@ -302,6 +324,8 @@ SELECT
     snapshot_package_unit,
     snapshot_energy_kcal,
     snapshot_protein_g,
+    total_energy_kcal,
+    total_protein_g,
     snapshot_carbohydrates_g,
     snapshot_sugars_g,
     snapshot_fat_g,
@@ -366,6 +390,8 @@ SELECT
     snapshot_package_unit,
     snapshot_energy_kcal,
     snapshot_protein_g,
+    total_energy_kcal,
+    total_protein_g,
     snapshot_carbohydrates_g,
     snapshot_sugars_g,
     snapshot_fat_g,
