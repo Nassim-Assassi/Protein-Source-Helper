@@ -1,3 +1,6 @@
+from static_summary_pages.summary_pages_generator import (
+    export_dashboard,
+)
 import json
 import sys
 from datetime import datetime, timezone
@@ -9,10 +12,6 @@ from unittest.mock import MagicMock, patch
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STATIC_ROOT = PROJECT_ROOT / "static_summary_pages"
 sys.path.insert(0, str(PROJECT_ROOT))
-
-from static_summary_pages.summary_pages_generator import (
-    export_dashboard,
-)
 
 
 class MarkupIndex(HTMLParser):
