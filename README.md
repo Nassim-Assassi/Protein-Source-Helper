@@ -1,178 +1,139 @@
 # Protein Source Helper
 
-Protein Source Helper is a planned public dashboard for comparing protein-rich
-grocery products across major UK supermarkets. It is intended to help shoppers
-find products that fit their budget and compare their protein and other
-nutrition values on a consistent basis.
+Protein Source Helper collects public grocery product data and publishes a
+read-only static dashboard comparing protein value across UK retailers.
+The current implementation scrapes Morrisons products, stores validated
+snapshots in PostgreSQL, and deploys fresh dashboard data to GitHub Pages.
 
-The MVP will focus on a limited set of protein-relevant grocery categories and
-two or three retailers, starting with Morrisons. The target refresh cadence is
-daily. The implementation plan and milestones are in
-[`PROJECT_PLAN.md`](./PROJECT_PLAN.md).
+## Current features
 
-## Planned features
+- Morrisons product discovery and extraction across retailer categories.
+- Shared extract, transform, and load pipeline with validation and structured
+  scrape-run metrics.
+- PostgreSQL schema for retailers, categories, brands, listings, batches,
+  runs, and historical snapshots.
+- Freshness-filtered data views and derived cost, protein, ranking, and value
+  metrics.
+- Static browser dashboard with retailer coverage, data-quality KPIs, and
+  balanced, cost-saving, and protein-focused rankings.
+- GitHub Actions workflows for batch scraping and GitHub Pages publication.
+- Local CSV export mode for testing a retailer extraction without database writes.
 
-- Search products by name or brand.
-- Filter by supermarket, category, protein density, and price.
-- Compare product price, package size, nutrition, and value metrics.
-- Sort for lowest price, protein per 100 g, or protein per pound.
-- Browse best-value options and, as history accumulates, price trends.
-- Show the latest successful data refresh, latest attempt status, and tracked
-  retailer coverage.
+## Usage
 
-## MVP product scope
+### Prerequisites
 
-The initial catalog will prioritize foods and drinks with useful protein
-content, including chicken, fish, mince, Greek yogurt, cottage cheese, eggs,
-tofu, beans and pulses, protein drinks and bars, and selected high-protein
-ready meals or snacks. The goal is useful comparisons, not a complete catalog
-of every grocery product.
+- Python 3.14
+- PostgreSQL and `psql`
+- Database credentials
+- Chromium for Playwright-based Morrisons extraction
 
-## Planned architecture
+### Install dependencies
 
-1. Python scraper adapters fetch publicly available product information with
-   modest request rates.
-2. A shared normalization layer converts retailer-specific product data into a
-   common schema.
-3. Scrape results are validated and upserted to PostgreSQL.
-4. GitHub Actions runs scheduled daily scrapes and records their outcomes.
-5. A Streamlit dashboard reads the public catalog and presents comparisons.
+```sh
+python -m pip install -r requirements-dev.txt
+python -m pip install -r scrapers/requirements.txt
+python -m playwright install --with-deps chromium
+```
 
-Retailer-specific extraction will remain isolated behind adapters so that
-changes to one supermarket site do not require rewriting the whole pipeline.
-The target initial retailer set is Morrisons, Sainsbury's, and either Tesco or
-Asda; the final third retailer remains to be selected.
+### Configure the database
 
-## Data and comparison conventions
+Set `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`, and
+`DATABASE_PASSWORD` in a project-root `.env` file or environment. Never commit
+this file or credentials.
 
-The base database schema is defined in
-[`database/schema.sql`](./database/schema.sql), and the dashboard views are
-defined in [`database/views.sql`](./database/views.sql). The schema creates
-retailers, retailer-scoped categories, brands, canonical products, retailer
-listings, scrape batches, retailer-specific scrape runs, and snapshots. One
-batch ID groups retailer runs launched together. Each snapshot combines one
-retailer listing's price and nutrition data collected in a single run. Primary
-key IDs use incrementing identity values: `snapshot_id` is `bigint`, and all
-other IDs are `int`. A retailer listing refers to its retailer and canonical
-product, and may refer to a category from that retailer's taxonomy. Listing
-identity is retailer-specific: the retailer and external listing ID are
-unique when the ID is present; when it is absent, the retailer and source URL
-are unique.
+Create a fresh database schema:
 
-- Normalize nutrition values in the ETL before inserting snapshots. Store
-  values per 100 g, per 100 ml, or per item, and record the basis in
-  `snapshot_nutrition_basis`. Convert per-serving values only when the serving
-  quantity and unit allow a reliable conversion; otherwise leave nutrition
-  values unknown. Do not convert between grams and millilitres without a
-  reliable density.
-- Every snapshot must include energy and protein values on its stated
-  nutrition basis. The database rejects snapshots missing either value; other
-  nutrient fields may remain unknown.
-- Every snapshot must include a positive package quantity and its unit (`g`,
-  `ml`, or `each`). The base tables do not store derived comparison metrics;
-  `current_data_mat` calculates price per 100 package units and total protein
-  grams per currency unit. Price per 100 package units can represent different
-  physical units and must not be compared across unlike units.
-- A snapshot row combines price and nutrition data and is unique per retailer
-  listing per scrape run. Ingestion should upsert on
-  `(retailer_listing_id, scrape_run_id)`; run timestamps provide the collection
-  window for its snapshots.
-- `current_data_mat` contains in-stock snapshots from each retailer's most
-  recent successful run, provided that run finished within the last 26 hours.
-  It does not fall back to an older snapshot for a listing omitted from that
-  run. Running or failed attempts do not replace the latest successful data;
-  show run status separately if the dashboard needs to communicate a newer
-  attempt's progress or failure. Only active retailers and listings are
-  included. `current_data` selects from this materialized view and checks the
-  26-hour freshness window at query time, so expired rows are hidden even
-  between refreshes.
-- Missing products are not recorded as snapshots. A product is marked inactive
-  only after it is absent from two consecutive successful retailer runs;
-  failed runs do not count. A product omitted from the latest successful run
-  is absent from `current_data_mat` immediately, even before it is marked
-  inactive.
-  Missing optional nutrient values remain unknown rather than being treated
-  as zero.
-- Comparisons must avoid calculating metrics when required inputs are missing.
-- Protein per pound should use protein per 100 g and price per 100 g, or
-  equivalent package-level values, with consistent units.
+```sh
+sh database/initial_database_setup.sh
+```
 
-## Repository contents
+This reset drops existing application objects in the
+`protein_source_helper` schema. For an existing installation, migrate them once:
 
-- [`database/schema.sql`](./database/schema.sql) — base tables, constraints,
-  and indexes.
-- [`database/views.sql`](./database/views.sql) — `current_data_mat`, its
-  indexes, and `current_data`; can be reapplied without resetting the tables.
-- [`database/initial_database_setup.sh`](./database/initial_database_setup.sh)
-  — applies the base schema and views using the database settings in the
-  project-root `.env` file. This is a destructive reset that drops existing
-  tables and dependent objects; the SQL runs in one transaction so failures
-  roll back.
-- [`database/recreate_views.sh`](./database/recreate_views.sh) — recreates
-  only the views, preserving base tables and data.
-- [`database/refresh_materialised_view.sh`](./database/refresh_materialised_view.sh)
-  — refreshes `current_data_mat` concurrently using the same `.env` settings.
-- [`database/refresh_materialised_view.sql`](./database/refresh_materialised_view.sql)
-  — contains the concurrent refresh statement.
-- [`database/migrate_to_protein_source_helper.sh`](./database/migrate_to_protein_source_helper.sh)
-  — moves existing application tables and views from `public` without
-  dropping their data.
-- [`morrisons_mvp_links.txt`](./morrisons_mvp_links.txt) —
-  Morrisons product links for initial exploration.
-- [`morrisons_product_categories.csv`](./morrisons_product_categories.csv) —
-  product and category URL data for initial exploration.
-- [`requirements.txt`](./requirements.txt) — current Python dependencies.
-- [`local_development/`](./local_development/) — local development files.
+```sh
+sh database/migrate_to_protein_source_helper.sh
+```
 
-The repository currently contains the schema and Morrisons research inputs.
-The scrapers, ingestion pipeline, deployed dashboard, and scheduled automation
-are planned work, not yet described here as completed features.
+Recreate views or refresh the materialized view without resetting base tables:
 
-## Getting started
+```sh
+sh database/recreate_views.sh
+sh database/refresh_materialised_view.sh
+```
 
-The database scripts require `psql` and a project-root `.env` file containing
-shell-compatible assignments for `DATABASE_HOST`, `DATABASE_PORT`,
-`DATABASE_NAME`, `DATABASE_USER`, and `DATABASE_PASSWORD`. Keep this file
-private and do not commit database credentials.
+### Run the Morrisons ETL
 
-1. Create a PostgreSQL database and configure the required values in `.env`.
-2. For an existing installation, run
-  `sh database/migrate_to_protein_source_helper.sh` once before deploying the
-  updated scraper. This moves the application objects to
-  `protein_source_helper` without dropping data. Ensure the scraper and
-  dashboard roles have `USAGE` on that schema and the required table
-  privileges.
-3. For a fresh database, initialize it by running
-  `sh database/initial_database_setup.sh` from the project root. This drops
-  existing application tables and dependent objects in
-  `protein_source_helper` before recreating the schema, so do not run it to
-  refresh data or against data you need to keep.
-  To recreate only the views without resetting data, run
-  `sh database/recreate_views.sh`.
-4. After loading or updating snapshots, refresh the materialized data by
-  running `sh database/refresh_materialised_view.sh`. The dashboard should
-  query `protein_source_helper.current_data`; its 26-hour filter is evaluated
-  on each query.
+The batch workflow initiates a batch and one scrape run for each retailer in the
+`RETAILERS` repository variable. For a local extraction test:
 
-Refresh scheduling is planned for the scraper logic and is not yet automated
-by these database scripts.
+```sh
+python -m scrapers.orchestrators.retailer_etl \
+  --retailer-name Morrisons \
+  --retailer-url https://groceries.morrisons.com \
+  --local_test
+```
 
-Configure separate database credentials and least-privilege permissions for
-the scraper and dashboard on the selected provider. Keep credentials in a
-trusted environment, such as GitHub Actions secrets, and never expose write
-credentials in the public Streamlit application. The current Python
-dependencies are listed in
-[`requirements.txt`](./requirements.txt).
+This writes transformed rows to `local_development/morrisons_products.csv`.
+To load a scrape into PostgreSQL, provide a batch ID:
 
-## Responsible data collection
+```sh
+python -m scrapers.orchestrators.retailer_etl \
+  --batch-id <BATCH_ID> \
+  --retailer-name Morrisons \
+  --retailer-url https://groceries.morrisons.com
+```
 
-Before scraping a retailer, review its terms and any applicable access rules.
-Do not access account-only or personal data. Keep request rates modest, avoid
-unnecessary repeat requests, and record source URLs and scrape timestamps.
-Retailer page changes and incomplete nutrition data are expected failure
-modes; the project plan includes validation and monitoring work to handle them.
+The SQL batch scripts in `database/` initiate and finalise scrape batches.
 
-## Project status
+### Preview the static dashboard
 
-This is an early MVP foundation. Use [`PROJECT_PLAN.md`](./PROJECT_PLAN.md) for
-the implementation sequence, validation criteria, and risks.
+Generate dashboard JSON:
+
+```sh
+python -m pip install -r static_summary_pages/requirements.txt
+python static_summary_pages/summary_pages_generator.py
+```
+
+Serve the repository root and open the static pages:
+
+```sh
+python3 -m http.server 4173
+```
+
+Visit `http://localhost:4173/static_summary_pages/`.
+
+The browser loads `static_summary_pages/data/dashboard-data.json`; it does not
+connect directly to PostgreSQL or receive database credentials.
+
+### Run tests
+
+```sh
+pytest
+```
+
+Lint and test workflows are included in `.github/workflows/`.
+
+## Repository layout
+
+- [`database/`](./database/) - PostgreSQL schema, views, migrations, and batch scripts.
+- [`scrapers/`](./scrapers/) - extraction, transformation, loading, orchestration,
+  and scraper tests.
+- [`static_summary_pages/`](./static_summary_pages/) - browser dashboard and
+  PostgreSQL JSON exporter.
+- [`local_development/`](./local_development/) - local test inputs and generated CSVs.
+- [`PROJECT_PLAN.md`](./PROJECT_PLAN.md) - remaining planned work and future scope.
+
+## Data conventions
+
+The database stores package quantity and unit, energy and protein on an
+explicit nutrition basis, optional nutrient values, and per-run scrape results.
+The dashboard reads `protein_source_helper.current_data`, which hides stale and
+out-of-stock listings. Derived metrics are not displayed when required values
+are missing or units are incompatible.
+
+## Responsible collection
+
+Review retailer terms and applicable access rules before scraping. Collect only
+public product information, use modest request rates, and keep account data and
+credentials out of the project and browser output.

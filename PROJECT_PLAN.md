@@ -1,275 +1,138 @@
-# Protein Source Helper — Project Plan
+# Protein Source Helper - Project Plan
 
 ## 1. Objective
 
-Build a public-facing dashboard that helps UK shoppers compare protein-focused
-grocery products by price, nutrition, and value. The first release should be
-small enough to validate the product while establishing a reusable foundation
-for additional categories and supermarkets.
+Expand the existing Morrisons-backed static dashboard into a broader, reliable,
+public protein-value comparison service. Future work should improve retailer
+coverage, discovery, comparison tools, automation, and operational monitoring
+without weakening the existing database and scraping contracts.
 
-## 2. MVP scope
+## 2. Remaining product scope
 
-### Users and outcomes
+### Dashboard experience
 
-Shoppers should be able to:
-
-- Search products by product name or brand.
-- Filter by retailer, category, maximum price, and protein threshold.
-- Compare price, package size, protein per 100 g, and price per 100 g.
-- Find lower-cost and higher-protein-per-pound options.
-- See when data was last refreshed.
-
-Price history and retailer movement are follow-on dashboard views once enough
-daily snapshots have accumulated.
-
-### Retailers
-
-- Initial retailer: Morrisons.
-- Next retailer: Sainsbury's.
-- Third retailer: choose Tesco or Asda after a small technical feasibility
-  check.
-- Later candidates: Aldi, Lidl, Waitrose, and Ocado.
-
-Retailer coverage is a target, not a claim that working scrapers already exist.
-Each retailer's terms, access conditions, and technical approach must be
-reviewed before implementation.
-
-### Initial product categories
-
-Start with a curated selection of high-protein products: chicken, salmon and
-other fish, beef mince, Greek yogurt, cottage cheese, eggs, tofu or tempeh,
-beans and pulses, protein shakes and bars, and selected high-protein ready
-meals and snacks. Avoid attempting to catalog all supermarket groceries.
-
-## 3. Architecture
-
-```text
-Retailer product pages
-        |
-        v
-Python retailer adapters --> shared parsing and normalization
-        |                             |
-        +-----------------------------+
-                      |
-                      v
-              PostgreSQL
-          products + daily snapshots
-                      |
-                      v
-             Streamlit dashboard
-
-GitHub Actions schedules scraper runs and captures run outcomes.
-```
-
-### Component responsibilities
-
-- **Retailer adapters:** Fetch and extract retailer-specific product details;
-  isolate retailer selectors, embedded data parsing, and source quirks.
-- **Shared scraper utilities:** Provide common request/session handling,
-  respectful pacing, retry policy, logging, and error reporting.
-- **Normalization and validation:** Convert product and nutrient values into
-  the common model, standardize units, and reject or flag invalid records.
-- **PostgreSQL:** Persist retailer/product identity and dated price/nutrition
-  observations. The schema avoids provider-specific APIs and roles; configure
-  application roles and permissions separately for the chosen host.
-- **Streamlit:** Query read-only catalog data and provide searchable,
-  filterable comparisons.
-- **GitHub Actions:** Run ingestion daily, retain actionable logs, and expose
-  failed or partial runs for diagnosis.
-
-## 4. Data model
-
-The base schema is maintained in [`database/schema.sql`](./database/schema.sql),
-and the dashboard views are maintained in [`database/views.sql`](./database/views.sql).
-The base schema defines:
-
-- `retailer`: retailer name, URL, and active status.
-- `retailer_category`: category names scoped to a retailer.
-- `brand`: normalized brand names.
-- `canonical_product`: canonical product name, optional GTIN, and optional
-  brand.
-- `retailer_listing`: retailer-specific name, external ID, source and image
-  URLs, active status, canonical product, and optional retailer category.
-- `scrape_batch`: one coordinated scrape launch, with status and timestamps.
-- `scrape_run`: one retailer's run within a batch, with status, timestamps,
-  and error details. A batch may be partial while an individual run is
-  succeeded or failed.
-- `snapshot`: one listing's price, package quantity/unit, required energy and
-  protein values, optional nutrients, nutrition basis/source, and stock state
-  as observed in a scrape run.
-
-Primary key IDs use incrementing identity values: `snapshot_id` is `bigint`,
-and all other IDs are `int`. Foreign keys use the referenced ID's type.
-Retailer listings are unique by `(retailer_id, retailer_listing_external_id)`
-when the external ID is present; when it is absent, they are unique by
-`(retailer_id, retailer_listing_source_url)`. Snapshots are unique by
-`(retailer_listing_id, scrape_run_id)`. Composite foreign keys ensure a
-snapshot's listing and scrape run belong to the same retailer. Identity
-primary keys remain database-managed; status values and required data must be
-provided by ingestion, while timestamps and active/stock flags have defaults
-where defined.
-
-Create one `scrape_batch` for each coordinated scrape launch, then one
-`scrape_run` per retailer in that batch. Each retailer run can succeed or fail
-independently while retaining a shared ID for the overall launch. Snapshot
-counts can be derived by querying snapshots for the run.
-
-### Data conventions and ingestion rules
-
-1. Normalize nutrient values in the ETL before inserting snapshots. Store
-  values per 100 g, per 100 ml, or per item and record the basis accordingly.
-   Convert per-serving values only when serving quantity and unit allow a
-   reliable conversion; otherwise leave nutrition values unknown. Do not
-   convert between grams and millilitres without a reliable density.
-   Every snapshot must include energy and protein values on its stated basis;
-   other nutrient values may be unknown.
-2. Store package amount with an explicit unit (`g`, `ml`, or `each`); do not
-   silently treat volume or count as weight.
-3. Match listings by retailer and external ID when present; if no external ID
-  is present, use retailer and source URL. Normalize empty IDs to `NULL` and
-  canonicalize URLs before matching. The schema's URL uniqueness rule applies
-  only when the external ID is `NULL`.
-4. Upsert each snapshot by `(retailer_listing_id, scrape_run_id)` so its price
-  and nutrition values stay together. The listing's retailer and scrape run's
-  retailer must match.
-5. Use the associated run's start and finish timestamps as the collection
-  window for its snapshots. Keep the previous successful run visible while a
-  later run is running or failed. Only mark a run successful once its
-  snapshots are complete and visible.
-6. Keep source URLs so values can be investigated.
-7. Treat missing non-required nutrition data as unknown, not zero. Package
-  quantity and unit are required for every snapshot. Do not write a snapshot
-  if energy or protein is unavailable.
-  If a product is absent from a scrape, do not write a snapshot for it. Mark
-   it inactive only after it is absent from two consecutive successful runs
-   for its retailer; failed runs do not count as missing observations. If it
-   reappears, keep or reactivate it as active. Products omitted from the
-   latest successful run are hidden from the dashboard immediately, even
-   before the two-run threshold deactivates them.
-8. Validate non-negative prices and nutrients and positive package quantities
-   before writing.
-9. Read dashboard data from `current_data`, not directly from
-  `current_data_mat`. The materialized view contains in-stock snapshots from
-  each retailer's most recent successful run finished within the last 26
-  hours at the time it was refreshed. It does not fall back to an older
-  snapshot for a listing omitted from that run. The regular `current_data`
-  view applies the same 26-hour freshness check at query time, so expired rows
-  are hidden between refreshes. A retailer with no qualifying successful run
-  contributes no rows. Running and failed attempts do not replace the latest
-  successful run; report their status separately when needed.
-
-The schema restricts deletion of listings referenced by snapshots and of runs
-referenced by snapshots. Deactivate listings rather than deleting them so
-historical observations remain.
-
-External IDs are the preferred listing identity. The schema enforces
-retailer-scoped uniqueness on `retailer_listing_external_id` when present and
-on `retailer_listing_source_url` when the external ID is `NULL`. ETL should
-normalize empty external IDs to `NULL` and canonicalize source URLs before
-matching.
-
-## 5. Metrics
-
-The current `current_data_mat` view calculates `price_per_100_units` from
-package price and quantity, and `total_protein_grams_per_currency_unit` from
-the nutrition basis, package quantity, and price. The first metric can
-represent grams, millilitres, or eaches; it is not a like-for-like price per
-100 g metric. Treat comparisons across different package units as a known
-limitation until the metric is split or normalized. The regular `current_data`
-view exposes these columns with the same freshness filter.
-
-Planned dashboard metrics include:
-
-- **Price per 100 g:** calculate only for gram-based packages with compatible
-  units; do not persist the derived value.
-- **Protein per 100 g:** display only when the stored nutrition basis supports
-  it or can be reliably normalized.
-- **Protein per pound:** display with explicit currency and units, using
-  comparable price and protein values.
-- **Price versus category average:** compare only products with compatible
-  package units and category scope.
-- **Best value:** rank by protein per pound only when inputs are present and
-  comparable.
-
-Do not show computed metrics when inputs are absent, incomparable, or
-ambiguous. The exact best-value ranking and treatment of promotions should be
-validated before presenting it as a recommendation.
-
-## 6. Delivery phases and acceptance criteria
-
-### Phase 1 — Foundation
-
-- Confirm product categories, retailer choice for the third supermarket, and
-  PostgreSQL provider configuration.
-- Apply and smoke-test the schema in a development PostgreSQL database.
-- Remember that `database/initial_database_setup.sh` resets the database's
-  application tables and dependent objects before applying the schema.
-- Define environment variable names and secret handling without committing
-  credentials.
-- Agree the normalized product and snapshot payloads.
-
-**Done when:** the schema applies cleanly, sample records can be written and
-queried, and the data contract is documented.
-
-### Phase 2 — Morrisons ingestion
-
-- Build shared scraper primitives and a Morrisons adapter.
-- Start from the curated links in `morrisons_mvp_links.txt` and category data
-  in `morrisons_product_categories.csv`.
-- Extract product identity, name, brand, category, price, package size, and
-  nutrition where available.
-- Add validation, rate limiting, structured logs, and scrape-run records.
-
-**Done when:** a small representative set of product pages can be processed
-repeatedly; valid records upsert without duplicates; unavailable or malformed
-fields are reported rather than silently fabricated.
-
-### Phase 3 — Add retailers
-
-- Add a Sainsbury's adapter using the shared normalized output.
-- Evaluate Tesco versus Asda for the third retailer and implement the selected
-  adapter.
-- Record retailer-specific extraction limitations and test representative
-  products for each supported category.
-
-**Done when:** all enabled adapters produce the same validated payload shape,
-and failure in one retailer does not prevent other retailers from completing.
-
-### Phase 4 — Dashboard MVP
-
-- Create an overview with product counts, retailers, and latest run status/time.
-- Add search and retailer/category/price/protein filters.
-- Add sortable product results with price, package size, price per 100 g, and
-  protein per 100 g.
-- Add product comparison and a protein-per-pound best-value view.
+- Add product-name and brand search.
+- Add retailer, category, maximum-price, and protein-threshold filters.
+- Add sorting and comparison views that account for package size and compatible units.
+- Display a clearly defined protein-per-pound value alongside existing price and
+  protein metrics.
+- Show latest successful refresh, newest attempt status, stale data, and
+  per-retailer coverage.
 - Handle loading, empty, stale, and query-error states clearly.
+- Improve mobile and keyboard interactions for all interactive controls.
 
-**Done when:** a visitor can find and compare products using current stored
-data without access to scraper credentials.
+### Retailer expansion
 
-### Phase 5 — Daily automation
+- Add Sainsbury's extraction and test representative product categories.
+- Evaluate Tesco and Asda, then implement the selected third retailer.
+- Investigate Aldi, Lidl, Waitrose, and Ocado after core data quality is stable.
+- Review each retailer's terms, access conditions, technical approach, and
+  change risk before implementation.
 
-- Add a GitHub Actions workflow with a daily schedule and manual dispatch.
-- Supply PostgreSQL connection credentials using repository/environment
-  secrets.
-- Persist scrape-run status and counts; ensure failure and partial completion
-  are visible in logs.
-- Refresh `current_data_mat` after scrape results are committed; the dashboard
-  reads the freshness-filtered `current_data` view.
-- Make jobs safe to retry and avoid duplicate daily snapshots.
+### Catalog expansion
 
-**Done when:** a scheduled run completes end-to-end, its output appears in the
-dashboard, and failed runs are diagnosable without exposing secrets.
+- Broaden coverage only where extraction and nutrition quality are dependable.
+- Prioritize chicken, fish, beef mince, Greek yogurt, cottage cheese, eggs,
+  tofu or tempeh, beans and pulses, protein shakes and bars, and high-protein
+  ready meals or snacks.
+- Keep coverage intentionally curated rather than attempting a complete catalog
+  of every grocery product.
 
-### Phase 6 — Monitoring and improvement
+### Historical views
 
-- Track success/failure rates, snapshot counts per run, and stale data.
-- Review extraction changes and data anomalies on a regular cadence.
-- Improve identity matching, nutrition parsing, and category coverage.
-- Add price trends and more retailers only after core data quality is reliable.
+- Add price history once enough daily snapshots have accumulated.
+- Add retailer-level movement and trend views.
+- Preserve an explicit refresh timestamp and collection window for every trend.
 
-**Done when:** operators can detect stale or degraded data and resolve a
-retailer-specific breakage without compromising the rest of the service.
+## 3. Remaining architecture work
+
+- Add new retailer adapters behind the existing module contract.
+- Extend shared request pacing, retries, structured logging, and error reporting
+  as retailer-specific failures require.
+- Improve identity matching and nutrition parsing while preserving the loader's
+  validated payload contract.
+- Add scheduled batch execution and predictable retry behavior to GitHub Actions.
+- Add operator monitoring for stale data, run failures, snapshot counts, and
+  retailer-specific extraction degradation.
+- Keep the static dashboard read-only and credential-free by expanding only the
+  generated JSON export contract.
+
+## 4. Future data and contract work
+
+- Improve fallback identity matching when retailer IDs are unstable or missing.
+- Expand canonical-brand and category matching across retailers.
+- Improve serving-size and nutrition-basis conversion coverage.
+- Add a formal data-quality report for skipped, malformed, duplicate, stale,
+  and out-of-stock observations.
+- Define migration and compatibility rules before changing snapshot or metric
+  schemas.
+
+## 5. Future metrics and ranking work
+
+- **Protein per pound:** display with explicit currency and units using
+  comparable package or 100 g values.
+- **Price versus category average:** calculate only within compatible package
+  units and an agreed retailer/category scope.
+- **Promotion-adjusted value:** decide whether promotional prices are eligible
+  before adding a recommendation or rank.
+- Add regression tests for missing, zero, incomparable, and ambiguous values.
+- Document the ranking formula and mark rankings as informational where the
+  underlying comparisons are not methodologically complete.
+
+## 6. Delivery phases
+
+### Phase 1 - Dashboard discovery
+
+- Add product search and name/brand filtering.
+- Add retailer, category, price, and protein filters.
+- Add sortable and comparable product results.
+- Add a product detail or comparison view.
+- Improve loading, empty, stale, error, and no-results states.
+
+**Done when:** visitors can find and compare eligible products through a clear,
+keyboard-accessible interface.
+
+### Phase 2 - Retailer expansion
+
+- Add Sainsbury's extraction using the shared payload contract.
+- Evaluate Tesco and Asda and implement the selected third retailer.
+- Test representative categories and nutrition formats for every enabled retailer.
+- Review extraction limitations and isolate retailer failures.
+
+**Done when:** every enabled adapter produces the shared payload and a failed
+retailer run does not prevent successful retailers from loading.
+
+### Phase 3 - Automation and publishing
+
+- Change the batch workflow from manual dispatch to a scheduled daily run.
+- Keep manual dispatch for on-demand refreshes.
+- Refresh the materialized view after committed scrape results.
+- Generate and publish dashboard data after a successful or partial batch.
+- Make retries and reruns avoid duplicate snapshots.
+
+**Done when:** a scheduled end-to-end run produces fresh dashboard data and
+failed or partial runs are diagnosable without exposing secrets.
+
+### Phase 4 - Static dashboard hardening
+
+- Validate database-derived source URLs and allow only safe link schemes.
+- Add normal, empty, malformed, and unexpected-data rendering tests.
+- Cover keyboard activation and tab selection for ranking controls.
+- Deterministically close exporter database connections in repeated runs.
+
+**Done when:** malformed data cannot create unsafe links or break rendering,
+and rendering behavior is covered by automated tests.
+
+### Phase 5 - Monitoring and trends
+
+- Add success/failure rates and stale-data monitoring.
+- Alert or log retailer-specific extraction degradation.
+- Improve identity matching and nutrition parsing from observed failures.
+- Add price history and retailer movement views after enough snapshots exist.
+- Investigate additional supermarkets only after core quality and monitoring are reliable.
+
+**Done when:** operators can identify stale or degraded data and resolve it
+without compromising other retailers or the rest of the service.
 
 ## 7. Risks and mitigations
 
@@ -277,12 +140,13 @@ retailer-specific breakage without compromising the rest of the service.
 | --- | --- |
 | Retailer markup, APIs, or embedded product data changes | Keep adapters isolated, test representative URLs, and log parse failures. |
 | Access restrictions or anti-bot responses | Review retailer terms, use modest rates, avoid account-only pages, and stop rather than bypass access controls. |
-| Inconsistent nutrition bases and units | Normalize explicitly, retain source/basis metadata where available, and do not calculate from ambiguous inputs. |
-| Product IDs change or are missing | Prefer retailer external IDs; define and test fallback identity rules per retailer. |
-| Duplicate products or repeated snapshots | Use database uniqueness constraints and deterministic upserts. |
-| Price promotions make comparisons misleading | Capture observed price and timestamp; clarify promotion treatment before ranking. |
-| One retailer breaks the whole daily job | Isolate adapter execution and record per-retailer outcomes. |
-| Database credentials leak | Keep credentials only in trusted runtime secrets and give each application only the permissions it needs. |
+| Inconsistent nutrition bases and units | Normalize explicitly, retain source/basis metadata, and never calculate from ambiguous inputs. |
+| Product IDs change or are missing | Prefer external IDs and test a deterministic retailer-specific URL fallback. |
+| Duplicate products or repeated snapshots | Retain database uniqueness constraints and deterministic upserts. |
+| Price promotions make comparisons misleading | Capture observed price and timestamp and define promotion treatment before ranking. |
+| One retailer breaks the whole batch | Isolate adapter execution and record independent per-retailer outcomes. |
+| Database credentials leak | Keep credentials in trusted runtime secrets and apply least-privilege permissions. |
+| Static dashboard output becomes unsafe | Validate generated links and rendered values and test malformed database-derived data. |
 
 ## 8. Responsible collection and security
 
@@ -294,38 +158,12 @@ retailer-specific breakage without compromising the rest of the service.
 - Give the ingestion worker write access only as required, and give the
   dashboard read-only access to the catalog data it needs.
 
-## 9. Suggested repository layout
+## 9. Future sequencing
 
-```text
-database/
-  schema.sql
-  initial_database_setup.sh
-  refresh_materialised_view.sh
-  refresh_materialised_view.sql
-scraper/
-  core.py
-  normalize.py
-  run_daily.py
-  retailers/
-    morrisons.py
-    sainsburys.py
-    tesco_or_asda.py
-dashboard/
-  app.py
-.github/
-  workflows/
-    daily-scrape.yml
-```
-
-This is a target structure for implementation, not a description of files
-already present. Keep the layout simple as the project grows and avoid adding
-components that the MVP does not yet need.
-
-## 10. Initial milestone and sequencing
-
-The first usable milestone is a small set of Morrisons products ingested into
-PostgreSQL and visible in a simple dashboard with search, price, protein per
-100 g, and price per 100 g. Then add Sainsbury's and the selected third
-retailer, improve comparisons, and automate daily runs. Confirm retailer
-feasibility, data quality, and deployment requirements before expanding the
-catalog.
+1. Add dashboard search, filtering, sorting, and missing-data states.
+2. Schedule and harden end-to-end batch publishing.
+3. Add Sainsbury's extraction and representative product tests.
+4. Evaluate and add the selected third retailer.
+5. Complete dashboard and exporter accessibility and security hardening.
+6. Add monitoring, price history, and additional retailers as data quality
+   and operator confidence improve.
