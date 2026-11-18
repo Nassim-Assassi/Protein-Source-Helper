@@ -226,5 +226,3 @@ __marimo__/
 local_development
 
 .DS_Store
-
-!*dashboard-data.json
