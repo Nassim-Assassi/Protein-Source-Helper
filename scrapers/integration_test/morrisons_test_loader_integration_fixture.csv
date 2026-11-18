@@ -6,6 +6,6 @@ Test Chicken Breast,https://groceries.morrisons.com/products/test-chicken-breast
 Test Greek Yogurt,https://groceries.morrisons.com/products/test-greek-yogurt/TEST005,2.10,500,g,97,9,per_100g,TEST005,,05012345000005,Test Dairy,Test Dairy,3.6,3.6,5,3.2,0,0.1,test fixture,false
 Test Firm Tofu,https://groceries.morrisons.com/products/test-firm-tofu/TEST006,2.75,280,g,144,16,per_100g,TEST006,,05012345000006,Test Plant Protein,Test Meat Alternatives,2,0.5,8,1.2,1,0.02,test fixture,false
 Test Red Lentils,https://groceries.morrisons.com/products/test-red-lentils/TEST007,1.40,500,g,352,25,per_100g,TEST007,,05012345000007,Test Pantry,Test Pulses,60,2,1.1,0.2,11,0.02,test fixture,false
-Test Protein Shake,https://groceries.morrisons.com/products/test-protein-shake/TEST008,2.00,330,ml,62,10,per_100ml,TEST008,,0501000008,Test Nutrition,Test Drinks,4,3,1.5,0.8,0,0.12,test fixture,false
+Test Protein Shake,https://groceries.morrisons.com/products/test-protein-shake/TEST008,2.00,330,ml,62,10,per_100ml,TEST008,,0501000008,Test Nutrition,Test Drinks,4,3,1.5,0.8,0,0.12,test fixture,true
 Test Oats No GTIN,https://groceries.morrisons.com/products/test-oats-first-listing/TEST009,1.20,1000,g,372,13,per_100g,TEST009,, ,Test Pantry,Test Breakfast,60,1,7,1.2,10,0.01,test fixture,false
 Test Oats No GTIN,https://groceries.morrisons.com/products/test-oats-second-listing/TEST010,1.20,1000,g,372,13,per_100g,TEST010,, ,Test Pantry,Test Breakfast,60,1,7,1.2,10,0.01,test fixture,false

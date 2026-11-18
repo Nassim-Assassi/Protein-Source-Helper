@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 import psycopg
+from psycopg.rows import dict_row
 import pytest
 from dotenv import load_dotenv
 
@@ -118,37 +119,83 @@ class TestLoadScrapeIntegration:
             )
 
             cursor.execute(
-                "SELECT count(*) FROM protein_source_helper.snapshot"
-            )
-            snapshot_count = cursor.fetchone()[0]
-
-            cursor.execute(
-                "SELECT count(*) FROM protein_source_helper.retailer_listing"
-            )
-            listing_count = cursor.fetchone()[0]
-
-            cursor.execute(
                 """
-                SELECT snapshot_price
-                FROM protein_source_helper.snapshot
-                JOIN protein_source_helper.retailer_listing
+                SELECT
+                    count(DISTINCT listing.retailer_listing_id),
+                    count(snapshot.snapshot_id)
+                FROM protein_source_helper.snapshot AS snapshot
+                JOIN protein_source_helper.retailer_listing AS listing
                     USING (retailer_listing_id)
-                WHERE retailer_listing_external_id = 'TEST001'
-                """
+                WHERE snapshot.scrape_run_id = %s
+                """,
+                (scrape_run_id,),
             )
-            snapshot_price = cursor.fetchone()[0]
+            listing_count, snapshot_count = cursor.fetchone()
 
-            cursor.execute(
-                """
-                SELECT count(*)
-                FROM protein_source_helper.canonical_product
-                WHERE barcode_gtin = '05012345000001'
-                """
-            )
-            shared_gtin_count = cursor.fetchone()[0]
+            with integration_connection.cursor(row_factory=dict_row) as row_cursor:
+                row_cursor.execute(
+                    """
+                    SELECT
+                        listing.retailer_listing_external_id AS external_id,
+                        listing.canonical_product_id,
+                        product.barcode_gtin,
+                        product.canonical_product_name,
+                        brand.brand_name,
+                        brand.brand_id,
+                        category.retailer_category_name AS category_name,
+                        category.retailer_category_id,
+                        listing.retailer_listing_image_url AS image_url,
+                        snapshot.snapshot_price,
+                        snapshot.snapshot_package_quantity,
+                        snapshot.snapshot_package_unit,
+                        snapshot.snapshot_energy_kcal,
+                        snapshot.snapshot_protein_g,
+                        snapshot.snapshot_nutrition_basis,
+                        snapshot.snapshot_out_of_stock
+                    FROM protein_source_helper.snapshot AS snapshot
+                    JOIN protein_source_helper.retailer_listing AS listing
+                        USING (retailer_listing_id)
+                    JOIN protein_source_helper.canonical_product AS product
+                        USING (canonical_product_id)
+                    LEFT JOIN protein_source_helper.brand AS brand
+                        USING (brand_id)
+                    LEFT JOIN protein_source_helper.retailer_category AS category
+                        USING (retailer_category_id)
+                    WHERE snapshot.scrape_run_id = %s
+                    """,
+                    (scrape_run_id,),
+                )
+                rows = {
+                    row["external_id"]: row
+                    for row in row_cursor.fetchall()
+                }
 
         assert result.loaded_count == 10
-        assert snapshot_count == 10
-        assert listing_count == 10
-        assert snapshot_price == Decimal("19.99")
-        assert shared_gtin_count == 1
+        assert (listing_count, snapshot_count) == (10, 10)
+        assert set(rows) == {f"TEST{number:03}" for number in range(1, 11)}
+
+        assert rows["TEST001"]["canonical_product_id"] == rows["TEST002"][
+            "canonical_product_id"
+        ]
+        assert rows["TEST001"]["barcode_gtin"] == "05012345000001"
+        assert rows["TEST009"]["barcode_gtin"] is None
+        assert rows["TEST010"]["barcode_gtin"] is None
+        assert rows["TEST009"]["canonical_product_id"] == rows["TEST010"][
+            "canonical_product_id"
+        ]
+
+        assert rows["TEST001"]["brand_name"] == "Test Nutrition"
+        assert rows["TEST001"]["brand_id"] == rows["TEST002"]["brand_id"]
+        assert rows["TEST001"]["category_name"] == "Test Protein"
+        assert rows["TEST001"]["retailer_category_id"] == rows["TEST002"][
+            "retailer_category_id"
+        ]
+
+        assert rows["TEST003"]["image_url"] is None
+        assert rows["TEST008"]["snapshot_out_of_stock"] is True
+        assert rows["TEST001"]["snapshot_price"] == Decimal("19.99")
+        assert rows["TEST001"]["snapshot_protein_g"] == Decimal("80.000")
+        assert rows["TEST008"]["snapshot_package_quantity"] == Decimal(
+            "330.000")
+        assert rows["TEST008"]["snapshot_package_unit"] == "ml"
+        assert rows["TEST008"]["snapshot_nutrition_basis"] == "per_100ml"
