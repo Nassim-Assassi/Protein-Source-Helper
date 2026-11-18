@@ -55,39 +55,78 @@ SELECT
     latest.scrape_run_finished_at,
     round(
         CASE
-            WHEN
-                s.snapshot_package_quantity > 0
-                THEN (s.snapshot_price / s.snapshot_package_quantity) * 100
+            WHEN s.snapshot_energy_kcal > 0
+                THEN
+                    CASE
+                        WHEN
+                            s.snapshot_nutrition_basis = 'per_item'
+                            AND s.snapshot_package_unit = 'each'
+                            THEN
+                                (
+                                    s.snapshot_price
+                                    / (
+                                        s.snapshot_energy_kcal
+                                        * s.snapshot_package_quantity
+                                    )
+                                ) * 100
+                        WHEN
+                            s.snapshot_nutrition_basis = 'per_100g'
+                            AND s.snapshot_package_unit = 'g'
+                            THEN
+                                (
+                                    s.snapshot_price
+                                    / (
+                                        (s.snapshot_energy_kcal / 100.0)
+                                        * s.snapshot_package_quantity
+                                    )
+                                ) * 100
+                        WHEN
+                            s.snapshot_nutrition_basis = 'per_100ml'
+                            AND s.snapshot_package_unit = 'ml'
+                            THEN
+                                (
+                                    s.snapshot_price
+                                    / (
+                                        (s.snapshot_energy_kcal / 100.0)
+                                        * s.snapshot_package_quantity
+                                    )
+                                ) * 100
+                    END
         END, 2
-    ) AS price_per_100_units,
+    ) AS cost_per_100_kcal,
     round(
         CASE
-            WHEN s.snapshot_price > 0 AND s.snapshot_package_quantity > 0
+            WHEN s.snapshot_energy_kcal > 0
                 THEN
-                    (
-                        CASE
-                            WHEN
-                                s.snapshot_nutrition_basis = 'per_item'
-                                AND s.snapshot_package_unit = 'each'
-                                THEN
-                                    s.snapshot_protein_g
-                                    * s.snapshot_package_quantity
-                            WHEN
-                                s.snapshot_nutrition_basis = 'per_100g'
-                                AND s.snapshot_package_unit = 'g'
-                                THEN
-                                    (s.snapshot_protein_g / 100.0)
-                                    * s.snapshot_package_quantity
-                            WHEN
-                                s.snapshot_nutrition_basis = 'per_100ml'
-                                AND s.snapshot_package_unit = 'ml'
-                                THEN
-                                    (s.snapshot_protein_g / 100.0)
-                                    * s.snapshot_package_quantity
-                        END
-                    ) / s.snapshot_price
+                    (s.snapshot_protein_g / s.snapshot_energy_kcal) * 100
         END, 2
-    ) AS total_protein_grams_per_currency_unit
+    ) AS protein_g_per_100_kcal,
+    round(
+        CASE
+            WHEN s.snapshot_protein_g > 0
+                THEN
+                    s.snapshot_price / CASE
+                        WHEN
+                            s.snapshot_nutrition_basis = 'per_item'
+                            AND s.snapshot_package_unit = 'each'
+                            THEN
+                                s.snapshot_protein_g
+                                * s.snapshot_package_quantity
+                        WHEN
+                            s.snapshot_nutrition_basis = 'per_100g'
+                            AND s.snapshot_package_unit = 'g'
+                            THEN
+                                (s.snapshot_protein_g / 100.0)
+                                * s.snapshot_package_quantity
+                        WHEN
+                            s.snapshot_nutrition_basis = 'per_100ml'
+                            AND s.snapshot_package_unit = 'ml'
+                            THEN
+                                (s.snapshot_protein_g / 100.0)
+                                * s.snapshot_package_quantity
+                    END
+        END, 4
+    ) AS price_per_protein_g
 FROM latest_successful_run AS latest
 INNER JOIN protein_source_helper.snapshot AS s
     ON
@@ -115,9 +154,14 @@ WHERE
 CREATE UNIQUE INDEX current_data_mat_listing_id_idx
 ON protein_source_helper.current_data_mat (retailer_listing_id);
 
-CREATE INDEX current_data_mat_protein_per_cost_idx
+CREATE INDEX current_data_mat_protein_per_100_kcal_idx
 ON protein_source_helper.current_data_mat (
-    total_protein_grams_per_currency_unit DESC NULLS LAST
+    protein_g_per_100_kcal DESC NULLS LAST
+);
+
+CREATE INDEX current_data_mat_price_per_protein_g_idx
+ON protein_source_helper.current_data_mat (
+    price_per_protein_g ASC NULLS LAST
 );
 
 CREATE INDEX current_data_mat_canonical_id_idx
@@ -159,7 +203,8 @@ SELECT
     scrape_run_id,
     scrape_run_started_at,
     scrape_run_finished_at,
-    price_per_100_units,
-    total_protein_grams_per_currency_unit
+    cost_per_100_kcal,
+    protein_g_per_100_kcal,
+    price_per_protein_g
 FROM protein_source_helper.current_data_mat
 WHERE scrape_run_finished_at >= statement_timestamp() - interval '26 hours';
