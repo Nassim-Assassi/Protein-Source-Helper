@@ -79,10 +79,21 @@
           <div>
             <h2 id="rankings-heading">Best value products</h2>
           </div>
-          <div class="tabs" role="tablist" aria-label="Ranking type">
-            <button id="value-focused-tab" class="tab active" data-ranking="value_focused_overall" role="tab" aria-selected="true" aria-controls="ranking-panel" tabindex="0">Value-focused</button>
-            <button id="balanced-tab" class="tab" data-ranking="balanced_overall" role="tab" aria-selected="false" aria-controls="ranking-panel" tabindex="-1">Balanced</button>
-            <button id="protein-focused-tab" class="tab" data-ranking="protein_focused_overall" role="tab" aria-selected="false" aria-controls="ranking-panel" tabindex="-1">Protein-focused</button>
+          <div class="table-controls">
+            <div class="tabs" role="tablist" aria-label="Ranking type">
+              <button id="value-focused-tab" class="tab active" data-ranking="value_focused_overall" role="tab" aria-selected="true" aria-controls="ranking-panel" tabindex="0">Value-focused</button>
+              <button id="balanced-tab" class="tab" data-ranking="balanced_overall" role="tab" aria-selected="false" aria-controls="ranking-panel" tabindex="-1">Balanced</button>
+              <button id="protein-focused-tab" class="tab" data-ranking="protein_focused_overall" role="tab" aria-selected="false" aria-controls="ranking-panel" tabindex="-1">Protein-focused</button>
+            </div>
+            <details class="column-control">
+              <summary>Additional metrics</summary>
+              <fieldset>
+                <legend>Metrics</legend>
+                <label><input type="checkbox" data-column-toggle value="cost-per-100-kcal"> Cost / 100 kcal</label>
+                <label><input type="checkbox" data-column-toggle value="protein-per-100-kcal"> Protein / 100 kcal</label>
+                <label><input type="checkbox" data-column-toggle value="cost-per-100g-protein"> Cost / 100 g protein</label>
+              </fieldset>
+            </details>
           </div>
         </div>
         <div id="ranking-panel" class="table-wrap" role="tabpanel" aria-labelledby="value-focused-tab" tabindex="0">
@@ -95,9 +106,9 @@
                 <th class="number">Price</th>
                 <th class="number">Calories (kcal)</th>
                 <th class="number">Protein (g)</th>
-                <th class="number">Cost / 100 kcal</th>
-                <th class="number">Protein / 100 kcal</th>
-                <th class="number">Cost / 100 g protein</th>
+                <th class="number" data-column="cost-per-100-kcal" hidden>Cost / 100 kcal</th>
+                <th class="number" data-column="protein-per-100-kcal" hidden>Protein / 100 kcal</th>
+                <th class="number" data-column="cost-per-100g-protein" hidden>Cost / 100 g protein</th>
                 <th class="number score-col">Value score</th>
                 <th class="number score-col">Protein score</th>
               </tr>
@@ -127,6 +138,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=17"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

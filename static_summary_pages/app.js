@@ -148,6 +148,20 @@ function rankingProducts() {
   return dashboardData.rankings[activeRanking];
 }
 
+function updateOptionalColumns() {
+  document.querySelectorAll("[data-column-toggle]").forEach((toggle) => {
+    document.querySelectorAll(`[data-column="${toggle.value}"]`).forEach((cell) => {
+      cell.hidden = !toggle.checked;
+    });
+  });
+}
+
+function createMetricCell(column, text) {
+  const cell = createElement("td", "number", text);
+  cell.dataset.column = column;
+  return cell;
+}
+
 function renderTable() {
   const products = rankingProducts();
 
@@ -155,9 +169,11 @@ function renderTable() {
   if (!products.length) {
     const row = document.createElement("tr");
     const cell = createElement("td", "number", "No listings are available for this ranking.");
-    cell.colSpan = 11;
+    cell.colSpan = 8 + [...document.querySelectorAll("[data-column-toggle]")]
+      .filter((toggle) => toggle.checked).length;
     row.append(cell);
     tbody.replaceChildren(row);
+    updateOptionalColumns();
     return;
   }
 
@@ -208,14 +224,19 @@ function renderTable() {
     row.append(createElement("td", "number", formatCurrency(product.price)));
     row.append(createElement("td", "number", formatNumber(product.energy_kcal)));
     row.append(createElement("td", "number", `${formatNumber(product.protein_g)} g`));
-    row.append(createElement("td", "number", formatCurrency(product.cost_per_100_kcal)));
-    row.append(createElement("td", "number", `${formatNumber(product.protein_g_per_100_kcal)} g`));
-    row.append(createElement("td", "number", formatCurrency(product.cost_per_100g_protein)));
+    row.append(createMetricCell("cost-per-100-kcal", formatCurrency(product.cost_per_100_kcal)));
+    row.append(createMetricCell("protein-per-100-kcal", `${formatNumber(product.protein_g_per_100_kcal)} g`));
+    row.append(createMetricCell("cost-per-100g-protein", formatCurrency(product.cost_per_100g_protein)));
     row.append(createElement("td", "number score-col", formatNumber(product.value_score)));
     row.append(createElement("td", "number score-col", formatNumber(product.protein_score)));
     return row;
   }));
+  updateOptionalColumns();
 }
+
+document.querySelectorAll("[data-column-toggle]").forEach((toggle) => {
+  toggle.addEventListener("change", renderTable);
+});
 
 $("#retailer-measure").addEventListener("change", renderRetailerChart);
 const tabs = [...document.querySelectorAll(".tab")];

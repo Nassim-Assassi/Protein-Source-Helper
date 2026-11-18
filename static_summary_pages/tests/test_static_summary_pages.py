@@ -63,6 +63,19 @@ class TestStaticDashboardMarkup:
         assert "Individual listings" not in html
         assert "Top product listings" not in html
 
+    def test_comparison_metrics_are_optional_and_hidden_by_default(self) -> None:
+        html = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
+        app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+        for column in (
+            "cost-per-100-kcal",
+            "protein-per-100-kcal",
+            "cost-per-100g-protein",
+        ):
+            assert f'data-column-toggle value="{column}"' in html
+            assert f'data-column="{column}" hidden' in html
+            assert f'createMetricCell("{column}"' in app
+        assert "function updateOptionalColumns()" in app
+
     def test_table_places_clickable_image_before_product_name(self) -> None:
         app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
         assert 'const imageLink = createElement("a", "product-image-link", null);' in app
