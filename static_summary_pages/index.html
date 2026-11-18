@@ -15,7 +15,7 @@
     <div class="shell hero-inner">
       <div>
         <h1>Protein Source Helper</h1>
-        <p class="tagline">Find the best protein value in everyday products</p>
+        <p class="tagline">See past the supermarket hype. Protein shouldn't break the budget.</p>
       </div>
       <div class="freshness">
         <span>Data updated</span>
@@ -57,12 +57,20 @@
       </section>
 
       <section aria-label="Value comparison">
+        <div class="section-heading table-heading">
+          <div>
+            <h2>Retailer comparison</h2>
+          </div>
+          <label class="measure-control" for="value-measure">
+            <span>Measure</span>
+            <select id="value-measure">
+              <option value="value_score">Value score</option>
+              <option value="protein_score">Protein score</option>
+            </select>
+          </label>
+        </div>
         <article class="panel">
           <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Retailer comparison</p>
-              <h2>Retailer listings</h2>
-            </div>
             <label class="measure-control" for="retailer-measure">
               <span>Measure</span>
               <select id="retailer-measure">
@@ -102,15 +110,15 @@
               <tr>
                 <th aria-label="Product image"></th>
                 <th>Product/listing</th>
-                <th>Retailer</th>
-                <th class="number">Price</th>
-                <th class="number">Calories (kcal)</th>
-                <th class="number">Protein (g)</th>
-                <th class="number" data-column="cost-per-100-kcal" hidden>Cost / 100 kcal</th>
-                <th class="number" data-column="protein-per-100-kcal" hidden>Protein / 100 kcal</th>
-                <th class="number" data-column="cost-per-100g-protein" hidden>Cost / 100 g protein</th>
-                <th class="number score-col">Value score</th>
-                <th class="number score-col">Protein score</th>
+                <th class="center-col">Retailer</th>
+                <th class="number center-col">Price</th>
+                <th class="number center-col">Calories (kcal)</th>
+                <th class="number center-col">Protein (g)</th>
+                <th class="number center-col" data-column="cost-per-100-kcal" hidden>Cost / 100 kcal</th>
+                <th class="number center-col" data-column="protein-per-100-kcal" hidden>Protein / 100 kcal</th>
+                <th class="number center-col" data-column="cost-per-100g-protein" hidden>Cost / 100 g protein</th>
+                <th class="number score-col center-col">Value score</th>
+                <th class="number score-col center-col">Protein score</th>
               </tr>
             </thead>
             <tbody id="product-rows"></tbody>
@@ -122,8 +130,7 @@
       <section aria-labelledby="coverage-heading">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Data quality</p>
-            <h2 id="coverage-heading">Coverage and freshness</h2>
+            <h2 id="coverage-heading">Data coverage and freshness</h2>
           </div>
         </div>
         <div id="coverage-grid" class="coverage-grid"></div>

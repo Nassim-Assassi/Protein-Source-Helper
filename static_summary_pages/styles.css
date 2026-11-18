@@ -112,6 +112,7 @@ tbody tr:last-child td { border-bottom: 0; }
 .product-name { display: block; max-width: 260px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .brand-name { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
 .number { text-align: right; white-space: nowrap; }
+.center-col { text-align: center; }
 .score-col { color: var(--green-dark); font-weight: 800; }
 
 .coverage-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
