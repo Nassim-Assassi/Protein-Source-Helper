@@ -4,10 +4,11 @@ This directory contains the initial read-only Protein Source Helper static summa
 
 ## Regenerate data
 
-Run from the project root:
+Install the static page generator dependencies and run from the project root:
 
 ```sh
-.venv/bin/python static_summary_pages/summary_pages_generator.py
+python -m pip install -r static_summary_pages/requirements.txt
+python static_summary_pages/summary_pages_generator.py
 ```
 
 The exporter reads `protein_source_helper.current_data` and writes
