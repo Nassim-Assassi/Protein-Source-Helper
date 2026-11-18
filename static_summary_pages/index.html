@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Protein Source Helper static value dashboard">
+  <title>Protein Source Helper</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div class="shell hero-inner">
+      <div>
+        <h1>Protein Source Helper</h1>
+        <p class="tagline">Find the best protein value in everyday products</p>
+      </div>
+      <div class="freshness">
+        <span>Data updated</span>
+        <strong id="latest-scrape">Loading…</strong>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <div id="loading-state" class="state">Loading the latest exported data…</div>
+    <div id="error-state" class="state error" hidden></div>
+
+    <div id="dashboard" hidden>
+      <section aria-labelledby="overview-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="overview-heading">Overview</h2>
+          </div>
+        </div>
+        <div id="kpi-grid" class="kpi-grid"></div>
+      </section>
+
+      <section class="insight-band" aria-label="Key insights">
+        <div>
+          <p class="eyebrow">Best balanced value</p>
+          <strong id="best-balanced">—</strong>
+          <span id="best-balanced-detail"></span>
+        </div>
+        <div>
+          <p class="eyebrow">Lowest cost per 100 kcal</p>
+          <strong id="lowest-cost">—</strong>
+          <span id="lowest-cost-detail"></span>
+        </div>
+        <div>
+          <p class="eyebrow">Eligible listings</p>
+          <strong id="eligible-count">—</strong>
+          <span>In-stock, active listings</span>
+        </div>
+      </section>
+
+      <section aria-label="Value comparison">
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Retailer comparison</p>
+              <h2>Retailer listings</h2>
+            </div>
+            <label class="measure-control" for="retailer-measure">
+              <span>Measure</span>
+              <select id="retailer-measure">
+                <option value="listing_count">Listing count</option>
+              </select>
+            </label>
+          </div>
+          <div id="retailer-chart" class="bar-chart"></div>
+        </article>
+      </section>
+
+      <section aria-labelledby="rankings-heading">
+        <div class="section-heading table-heading">
+          <div>
+            <h2 id="rankings-heading">Best value products</h2>
+          </div>
+          <div class="tabs" role="tablist" aria-label="Ranking type">
+            <button id="balanced-tab" class="tab active" data-ranking="balanced" role="tab" aria-selected="true" aria-controls="ranking-panel" tabindex="0">Balanced</button>
+            <button id="cost-saving-tab" class="tab" data-ranking="cost_saving" role="tab" aria-selected="false" aria-controls="ranking-panel" tabindex="-1">Cost-saving</button>
+            <button id="protein-focused-tab" class="tab" data-ranking="protein_focused" role="tab" aria-selected="false" aria-controls="ranking-panel" tabindex="-1">Protein-focused</button>
+          </div>
+        </div>
+        <div id="ranking-panel" class="table-wrap" role="tabpanel" aria-labelledby="balanced-tab" tabindex="0">
+          <table>
+            <thead>
+              <tr>
+                <th aria-label="Product image"></th>
+                <th>Product/listing</th>
+                <th>Retailer</th>
+                <th class="number">Price</th>
+                <th class="number">Calories</th>
+                <th class="number">Protein</th>
+                <th class="number">Cost / 100 kcal</th>
+                <th class="number">Protein / 100 kcal</th>
+                <th class="number">Cost / protein g</th>
+                <th class="number score-col">Balanced score</th>
+              </tr>
+            </thead>
+            <tbody id="product-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="coverage-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Data quality</p>
+            <h2 id="coverage-heading">Coverage and freshness</h2>
+          </div>
+        </div>
+        <div id="coverage-grid" class="coverage-grid"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <div class="shell footer-inner">
+      <span>Protein Source Helper</span>
+      <span>Static data export · GBP</span>
+    </div>
+  </footer>
+
+  <script src="app.js?v=17"></script>
+</body>
+</html>
