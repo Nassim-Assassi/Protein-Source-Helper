@@ -94,7 +94,7 @@ function renderInsights() {
 }
 
 function renderRetailerChart() {
-  const measure = $("#retailer-measure").value;
+  const measure = $("#value-measure").value;
   let rows = [...dashboardData.retailers];
   const isCount = measure === "listing_count";
   rows.sort((a, b) => (b[measure] || 0) - (a[measure] || 0));
@@ -238,7 +238,7 @@ document.querySelectorAll("[data-column-toggle]").forEach((toggle) => {
   toggle.addEventListener("change", renderTable);
 });
 
-$("#retailer-measure").addEventListener("change", renderRetailerChart);
+$("#value-measure").addEventListener("change", renderRetailerChart);
 const tabs = [...document.querySelectorAll(".tab")];
 
 function activateTab(tab, moveFocus = false) {

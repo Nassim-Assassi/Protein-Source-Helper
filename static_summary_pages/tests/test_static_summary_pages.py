@@ -170,10 +170,15 @@ class TestDashboardDataPayload:
         brands = coverage_block.index('["Brands"')
         assert active < eligible < retailers < brands
 
-    def test_retailer_comparison_defaults_to_listing_count(self) -> None:
+    def test_retailer_comparison_uses_one_measure_selector(self) -> None:
         html = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
+        app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+        assert html.count('class="measure-control"') == 1
+        assert '<option value="average_value_score">Value score</option>' in html
+        assert '<option value="average_protein_score">Protein score</option>' in html
         assert '<option value="listing_count">Listing count</option>' in html
-        assert "average_value_score" not in html
+        assert '$("#value-measure").addEventListener("change", renderRetailerChart)' in app
+        assert '$("#retailer-measure")' not in app
 
 
 class TestSummaryPagesGenerator:
