@@ -247,44 +247,50 @@ normalized_data AS (
 
 value_scores AS (
     SELECT
-        normalized_data.*,
+        scores.*,
         CASE
             WHEN
-                normalized_data.cost_per_100_kcal_normalized_score IS NOT null
-                AND normalized_data.protein_g_per_100_kcal_normalized_score IS NOT null
+                scores.cost_per_100_kcal_normalized_score
+                IS NOT null
+                AND
+                scores.protein_g_per_100_kcal_normalized_score
+                IS NOT null
                 THEN
                     round(
-                        0.7 * normalized_data.cost_per_100_kcal_normalized_score
-                        + 0.3
-                        * normalized_data.protein_g_per_100_kcal_normalized_score,
+                        0.7 * scores.cost_per_100_kcal_normalized_score
+                        + 0.3 * scores.protein_g_per_100_kcal_normalized_score,
                         2
                     )
         END AS cost_saving_value_score,
         CASE
             WHEN
-                normalized_data.cost_per_100_kcal_normalized_score IS NOT null
-                AND normalized_data.protein_g_per_100_kcal_normalized_score IS NOT null
+                scores.cost_per_100_kcal_normalized_score
+                IS NOT null
+                AND
+                scores.protein_g_per_100_kcal_normalized_score
+                IS NOT null
                 THEN
                     round(
-                        0.5 * normalized_data.cost_per_100_kcal_normalized_score
-                        + 0.5
-                        * normalized_data.protein_g_per_100_kcal_normalized_score,
+                        0.5 * scores.cost_per_100_kcal_normalized_score
+                        + 0.5 * scores.protein_g_per_100_kcal_normalized_score,
                         2
                     )
         END AS balanced_value_score,
         CASE
             WHEN
-                normalized_data.cost_per_100_kcal_normalized_score IS NOT null
-                AND normalized_data.protein_g_per_100_kcal_normalized_score IS NOT null
+                scores.cost_per_100_kcal_normalized_score
+                IS NOT null
+                AND
+                scores.protein_g_per_100_kcal_normalized_score
+                IS NOT null
                 THEN
                     round(
-                        0.3 * normalized_data.cost_per_100_kcal_normalized_score
-                        + 0.7
-                        * normalized_data.protein_g_per_100_kcal_normalized_score,
+                        0.3 * scores.cost_per_100_kcal_normalized_score
+                        + 0.7 * scores.protein_g_per_100_kcal_normalized_score,
                         2
                     )
         END AS protein_focused_value_score
-    FROM normalized_data
+    FROM normalized_data AS scores
 )
 
 SELECT
