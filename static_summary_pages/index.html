@@ -40,9 +40,9 @@
 
       <section class="insight-band" aria-label="Key insights">
         <div>
-          <p class="eyebrow">Best balanced value</p>
-          <strong id="best-balanced">—</strong>
-          <span id="best-balanced-detail"></span>
+          <p class="eyebrow">Best balanced</p>
+          <strong id="best-overall">—</strong>
+          <span id="best-overall-detail"></span>
         </div>
         <div>
           <p class="eyebrow">Lowest cost per 100 kcal</p>
@@ -80,12 +80,12 @@
             <h2 id="rankings-heading">Best value products</h2>
           </div>
           <div class="tabs" role="tablist" aria-label="Ranking type">
-            <button id="balanced-tab" class="tab active" data-ranking="balanced" role="tab" aria-selected="true" aria-controls="ranking-panel" tabindex="0">Balanced</button>
-            <button id="cost-saving-tab" class="tab" data-ranking="cost_saving" role="tab" aria-selected="false" aria-controls="ranking-panel" tabindex="-1">Cost-saving</button>
-            <button id="protein-focused-tab" class="tab" data-ranking="protein_focused" role="tab" aria-selected="false" aria-controls="ranking-panel" tabindex="-1">Protein-focused</button>
+            <button id="value-focused-tab" class="tab active" data-ranking="value_focused_overall" role="tab" aria-selected="true" aria-controls="ranking-panel" tabindex="0">Value-focused</button>
+            <button id="balanced-tab" class="tab" data-ranking="balanced_overall" role="tab" aria-selected="false" aria-controls="ranking-panel" tabindex="-1">Balanced</button>
+            <button id="protein-focused-tab" class="tab" data-ranking="protein_focused_overall" role="tab" aria-selected="false" aria-controls="ranking-panel" tabindex="-1">Protein-focused</button>
           </div>
         </div>
-        <div id="ranking-panel" class="table-wrap" role="tabpanel" aria-labelledby="balanced-tab" tabindex="0">
+        <div id="ranking-panel" class="table-wrap" role="tabpanel" aria-labelledby="value-focused-tab" tabindex="0">
           <table>
             <thead>
               <tr>
@@ -98,7 +98,8 @@
                 <th class="number">Cost / 100 kcal</th>
                 <th class="number">Protein / 100 kcal</th>
                 <th class="number">Cost / 100 g protein</th>
-                <th class="number score-col">Balanced score</th>
+                <th class="number score-col">Value score</th>
+                <th class="number score-col">Protein score</th>
               </tr>
             </thead>
             <tbody id="product-rows"></tbody>

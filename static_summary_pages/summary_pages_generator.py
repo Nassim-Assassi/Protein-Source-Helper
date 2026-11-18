@@ -76,28 +76,22 @@ def as_product(row):
         "energy_kcal": valid_number(row["snapshot_energy_kcal"]),
         "protein_g": valid_number(row["snapshot_protein_g"]),
         "cost_per_100_kcal": valid_number(row["cost_per_100_kcal"]),
-        "cost_per_100_kcal_rank": valid_number(row["cost_per_100_kcal_rank"]),
         "cost_per_100_kcal_normalized_score": valid_number(
             row["cost_per_100_kcal_normalized_score"]
         ),
         "protein_g_per_100_kcal": valid_number(row["protein_g_per_100_kcal"]),
-        "protein_g_per_100_kcal_rank": valid_number(
-            row["protein_g_per_100_kcal_rank"]
-        ),
-        "protein_g_per_100_kcal_normalized_score": valid_number(
-            row["protein_g_per_100_kcal_normalized_score"]
-        ),
         "cost_per_100g_protein": valid_number(row["cost_per_100g_protein"]),
-        "cost_per_100g_protein_rank": valid_number(
-            row["cost_per_100g_protein_rank"]
-        ),
         "cost_per_100g_protein_normalized_score": valid_number(
             row["cost_per_100g_protein_normalized_score"]
         ),
-        "cost_saving_value_score": valid_number(row["cost_saving_value_score"]),
-        "balanced_value_score": valid_number(row["balanced_value_score"]),
-        "protein_focused_value_score": valid_number(
-            row["protein_focused_value_score"]
+        "value_score": valid_number(row["value_score"]),
+        "protein_score": valid_number(row["protein_score"]),
+        "balanced_overall_score": valid_number(row["balanced_overall_score"]),
+        "value_focused_overall_score": valid_number(
+            row["value_focused_overall_score"]
+        ),
+        "protein_focused_overall_score": valid_number(
+            row["protein_focused_overall_score"]
         ),
     }
 
@@ -178,19 +172,13 @@ def export_dashboard(output_path: Path = DASHBOARD_DATA) -> dict:
     for retailer in retailer_groups.values():
         retailer_rows = retailer.pop("rows")
         retailer["listing_count"] = len(retailer_rows)
-        retailer["average_balanced_value_score"] = mean(
-            retailer_rows, "balanced_value_score"
-        )
-        retailer["average_protein_focused_value_score"] = mean(
-            retailer_rows, "protein_focused_value_score"
-        )
-        retailer["average_cost_saving_value_score"] = mean(
-            retailer_rows, "cost_saving_value_score"
-        )
+        retailer["average_value_score"] = mean(retailer_rows, "value_score")
+        retailer["average_protein_score"] = mean(
+            retailer_rows, "protein_score")
         retailers.append(retailer)
     retailers.sort(
         key=lambda retailer: (
-            -(retailer["average_balanced_value_score"] or float("-inf")),
+            -(retailer["average_value_score"] or float("-inf")),
             retailer["retailer_name"] or "",
         )
     )
@@ -227,13 +215,8 @@ def export_dashboard(output_path: Path = DASHBOARD_DATA) -> dict:
             "average_protein_per_100_kcal": mean(
                 rows, "protein_g_per_100_kcal"
             ),
-            "average_cost_saving_value_score": mean(
-                rows, "cost_saving_value_score"
-            ),
-            "average_balanced_value_score": mean(rows, "balanced_value_score"),
-            "average_protein_focused_value_score": mean(
-                rows, "protein_focused_value_score"
-            ),
+            "average_value_score": mean(rows, "value_score"),
+            "average_protein_score": mean(rows, "protein_score"),
             "average_cost_per_100g_protein": mean(
                 rows, "cost_per_100g_protein"
             ),
@@ -250,10 +233,14 @@ def export_dashboard(output_path: Path = DASHBOARD_DATA) -> dict:
         },
         "retailers": retailers,
         "rankings": {
-            "balanced": ranked_products("balanced_value_score"),
-            "cost_saving": ranked_products("cost_saving_value_score"),
-            "protein_focused": ranked_products(
-                "protein_focused_value_score"
+            "value": ranked_products("value_score"),
+            "protein": ranked_products("protein_score"),
+            "balanced_overall": ranked_products("balanced_overall_score"),
+            "value_focused_overall": ranked_products(
+                "value_focused_overall_score"
+            ),
+            "protein_focused_overall": ranked_products(
+                "protein_focused_overall_score"
             ),
             "cost_per_100_kcal": ranked_products("cost_per_100_kcal"),
             "cost_per_100g_protein": ranked_products("cost_per_100g_protein"),

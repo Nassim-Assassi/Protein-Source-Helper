@@ -153,96 +153,63 @@ current_metrics AS (
         AND s.snapshot_out_of_stock = false
 ),
 
-ranked_data AS (
+score_benchmarks AS (
     SELECT
-        current_metrics.*,
-        CASE
-            WHEN current_metrics.cost_per_100_kcal IS NOT null
-                THEN rank() OVER (
-                    ORDER BY current_metrics.cost_per_100_kcal ASC NULLS LAST
-                )
-        END AS cost_per_100_kcal_rank,
-        CASE
-            WHEN current_metrics.protein_g_per_100_kcal IS NOT null
-                THEN rank() OVER (
-                    ORDER BY
-                        current_metrics.protein_g_per_100_kcal DESC NULLS LAST
-                )
-        END AS protein_g_per_100_kcal_rank,
-        CASE
-            WHEN current_metrics.cost_per_100g_protein IS NOT null
-                THEN rank() OVER (
-                    ORDER BY
-                        current_metrics.cost_per_100g_protein ASC NULLS LAST
-                )
-        END AS cost_per_100g_protein_rank
-    FROM current_metrics
+        0.14::numeric AS good_cost_per_100_kcal,
+        1.40::numeric AS poor_cost_per_100_kcal,
+        4.5833::numeric AS good_cost_per_100g_protein,
+        79.5374::numeric AS poor_cost_per_100g_protein
 ),
 
 normalized_data AS (
     SELECT
-        ranked_data.*,
+        current_metrics.*,
         CASE
-            WHEN ranked_data.cost_per_100_kcal IS NOT null
+            WHEN current_metrics.cost_per_100_kcal IS NOT null
                 THEN
-                    CASE
-                        WHEN
-                            count(ranked_data.cost_per_100_kcal) OVER () = 1
-                            THEN 100.0
-                        ELSE
-                            100.0 * (
-                                1.0
-                                - (ranked_data.cost_per_100_kcal_rank - 1.0)
+                    round(
+                        least(
+                            100.0,
+                            greatest(
+                                0.0,
+                                100.0
+                                * (
+                                    benchmarks.poor_cost_per_100_kcal
+                                    - current_metrics.cost_per_100_kcal
+                                )
                                 / (
-                                    count(ranked_data.cost_per_100_kcal) OVER ()
-                                    - 1
+                                    benchmarks.poor_cost_per_100_kcal
+                                    - benchmarks.good_cost_per_100_kcal
                                 )
                             )
-                    END
+                        ),
+                        2
+                    )
         END AS cost_per_100_kcal_normalized_score,
         CASE
-            WHEN ranked_data.protein_g_per_100_kcal IS NOT null
+            WHEN current_metrics.cost_per_100g_protein IS NOT null
                 THEN
-                    CASE
-                        WHEN
-                            count(ranked_data.protein_g_per_100_kcal) OVER ()
-                            = 1
-                            THEN 100.0
-                        ELSE
-                            100.0 * (
-                                1.0
-                                - (
-                                    ranked_data.protein_g_per_100_kcal_rank
-                                    - 1.0
+                    round(
+                        least(
+                            100.0,
+                            greatest(
+                                0.0,
+                                100.0
+                                * (
+                                    benchmarks.poor_cost_per_100g_protein
+                                    - current_metrics.cost_per_100g_protein
                                 )
                                 / (
-                                    count(ranked_data.protein_g_per_100_kcal)
-                                        OVER ()
-                                    - 1
+                                    benchmarks.poor_cost_per_100g_protein
+                                    - benchmarks.good_cost_per_100g_protein
                                 )
                             )
-                    END
-        END AS protein_g_per_100_kcal_normalized_score,
-        CASE
-            WHEN ranked_data.cost_per_100g_protein IS NOT null
-                THEN
-                    CASE
-                        WHEN
-                            count(ranked_data.cost_per_100g_protein) OVER () = 1
-                            THEN 100.0
-                        ELSE
-                            100.0 * (
-                                1.0
-                                - (ranked_data.cost_per_100g_protein_rank - 1.0)
-                                / (
-                                    count(ranked_data.cost_per_100g_protein)
-                                        OVER ()
-                                    - 1
-                                )
-                            )
-                    END
+                        ),
+                        2
+                    )
         END AS cost_per_100g_protein_normalized_score
-    FROM ranked_data
+    FROM current_metrics
+    CROSS JOIN score_benchmarks AS benchmarks
 ),
 
 value_scores AS (
@@ -253,44 +220,63 @@ value_scores AS (
                 scores.cost_per_100_kcal_normalized_score
                 IS NOT null
                 AND
-                scores.protein_g_per_100_kcal_normalized_score
+                scores.cost_per_100g_protein_normalized_score
                 IS NOT null
                 THEN
                     round(
-                        0.7 * scores.cost_per_100_kcal_normalized_score
-                        + 0.3 * scores.protein_g_per_100_kcal_normalized_score,
+                        (
+                            scores.cost_per_100_kcal_normalized_score
+                            + scores.cost_per_100g_protein_normalized_score
+                        ) / 2.0,
                         2
                     )
-        END AS cost_saving_value_score,
+        END AS value_score,
         CASE
-            WHEN
-                scores.cost_per_100_kcal_normalized_score
-                IS NOT null
-                AND
-                scores.protein_g_per_100_kcal_normalized_score
-                IS NOT null
+            WHEN scores.protein_g_per_100_kcal IS NOT null
                 THEN
                     round(
-                        0.5 * scores.cost_per_100_kcal_normalized_score
-                        + 0.5 * scores.protein_g_per_100_kcal_normalized_score,
+                        least(
+                            100.0,
+                            greatest(0.0, 4.0 * scores.protein_g_per_100_kcal)
+                        ),
                         2
                     )
-        END AS balanced_value_score,
-        CASE
-            WHEN
-                scores.cost_per_100_kcal_normalized_score
-                IS NOT null
-                AND
-                scores.protein_g_per_100_kcal_normalized_score
-                IS NOT null
-                THEN
-                    round(
-                        0.3 * scores.cost_per_100_kcal_normalized_score
-                        + 0.7 * scores.protein_g_per_100_kcal_normalized_score,
-                        2
-                    )
-        END AS protein_focused_value_score
+        END AS protein_score
     FROM normalized_data AS scores
+),
+
+overall_scores AS (
+    SELECT
+        scores.*,
+        CASE
+            WHEN
+                scores.value_score IS NOT null
+                AND scores.protein_score IS NOT null
+                THEN round((scores.value_score + scores.protein_score) / 2.0, 2)
+        END AS balanced_overall_score,
+        CASE
+            WHEN
+                scores.value_score IS NOT null
+                AND scores.protein_score IS NOT null
+                THEN
+                    round(
+                        0.75 * scores.value_score
+                        + 0.25 * scores.protein_score,
+                        2
+                    )
+        END AS value_focused_overall_score,
+        CASE
+            WHEN
+                scores.value_score IS NOT null
+                AND scores.protein_score IS NOT null
+                THEN
+                    round(
+                        0.25 * scores.value_score
+                        + 0.75 * scores.protein_score,
+                        2
+                    )
+        END AS protein_focused_overall_score
+    FROM value_scores AS scores
 )
 
 SELECT
@@ -329,18 +315,16 @@ SELECT
     scrape_run_started_at,
     scrape_run_finished_at,
     cost_per_100_kcal,
-    cost_per_100_kcal_rank,
     cost_per_100_kcal_normalized_score,
     protein_g_per_100_kcal,
-    protein_g_per_100_kcal_rank,
-    protein_g_per_100_kcal_normalized_score,
     cost_per_100g_protein,
-    cost_per_100g_protein_rank,
     cost_per_100g_protein_normalized_score,
-    cost_saving_value_score,
-    balanced_value_score,
-    protein_focused_value_score
-FROM value_scores;
+    value_score,
+    protein_score,
+    balanced_overall_score,
+    value_focused_overall_score,
+    protein_focused_overall_score
+FROM overall_scores;
 
 CREATE UNIQUE INDEX current_data_mat_listing_id_idx
 ON protein_source_helper.current_data_mat (retailer_listing_id);
@@ -395,16 +379,14 @@ SELECT
     scrape_run_started_at,
     scrape_run_finished_at,
     cost_per_100_kcal,
-    cost_per_100_kcal_rank,
     cost_per_100_kcal_normalized_score,
     protein_g_per_100_kcal,
-    protein_g_per_100_kcal_rank,
-    protein_g_per_100_kcal_normalized_score,
     cost_per_100g_protein,
-    cost_per_100g_protein_rank,
     cost_per_100g_protein_normalized_score,
-    cost_saving_value_score,
-    balanced_value_score,
-    protein_focused_value_score
+    value_score,
+    protein_score,
+    balanced_overall_score,
+    value_focused_overall_score,
+    protein_focused_overall_score
 FROM protein_source_helper.current_data_mat
 WHERE scrape_run_finished_at >= statement_timestamp() - interval '26 hours';

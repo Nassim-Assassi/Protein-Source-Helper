@@ -42,6 +42,12 @@ class TestStaticDashboardMarkup:
         assert markup.tabs[0]["aria-selected"] == "true"
         assert markup.tabs[0]["tabindex"] == "0"
         assert markup.tabs[1]["tabindex"] == "-1"
+        html = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
+        assert html.index(
+            ">Value-focused</button>") < html.index(">Balanced</button>")
+        assert html.index(
+            ">Balanced</button>") < html.index(">Protein-focused</button>")
+        assert "overall-score-heading" not in html
 
     def test_keyboard_navigation_is_delegated_to_the_tablist(self) -> None:
         app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
@@ -96,11 +102,19 @@ class TestDashboardDataPayload:
         assert payload["retailers"]
         assert all(payload["rankings"].values())
 
-        normal = payload["rankings"]["balanced"][0]
+        normal = payload["rankings"]["value"][0]
         assert normal["name"]
         assert normal["source_url"].startswith("https://")
         assert "cost_per_100g_protein" in normal
         assert "price_per_protein_g" not in normal
+        assert 0 <= normal["value_score"] <= 100
+        assert 0 <= normal["protein_score"] <= 100
+        for field in (
+            "balanced_overall_score",
+            "value_focused_overall_score",
+            "protein_focused_overall_score",
+        ):
+            assert 0 <= normal[field] <= 100
 
         empty_name = {**normal, "name": None}
         malicious_name = {**normal, "name": '<img src=x onerror="alert(1)">'}
@@ -121,7 +135,7 @@ class TestDashboardDataPayload:
             "Average cost / 100 g protein",
         ):
             assert label in app
-        assert "Average balanced value" not in app
+        assert "Average value score" not in app
         assert "Average listed price" not in app
 
     def test_coverage_cards_follow_requested_order(self) -> None:
@@ -136,7 +150,7 @@ class TestDashboardDataPayload:
     def test_retailer_comparison_defaults_to_listing_count(self) -> None:
         html = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
         assert '<option value="listing_count">Listing count</option>' in html
-        assert "average_balanced_value_score" not in html
+        assert "average_value_score" not in html
 
 
 class TestSummaryPagesGenerator:

@@ -1,7 +1,7 @@
 const $ = (selector) => document.querySelector(selector);
 
 let dashboardData = null;
-let activeRanking = "balanced";
+let activeRanking = "value_focused_overall";
 
 const formatCurrency = (value) => value == null
   ? "—"
@@ -80,11 +80,11 @@ function productLabel(product) {
 }
 
 function renderInsights() {
-  const balanced = dashboardData.rankings.balanced[0];
+  const bestOverall = dashboardData.rankings.balanced_overall[0];
   const cheapest = dashboardData.rankings.cost_per_100_kcal[0];
-  $("#best-balanced").textContent = balanced ? productLabel(balanced) : "—";
-  $("#best-balanced-detail").textContent = balanced
-    ? `${balanced.retailer_name} · ${formatNumber(balanced.balanced_value_score)} score`
+  $("#best-overall").textContent = bestOverall ? productLabel(bestOverall) : "—";
+  $("#best-overall-detail").textContent = bestOverall
+    ? bestOverall.retailer_name
     : "No valid scores in this export";
   $("#lowest-cost").textContent = cheapest ? formatCurrency(cheapest.cost_per_100_kcal) : "—";
   $("#lowest-cost-detail").textContent = cheapest
@@ -145,9 +145,7 @@ function renderCoverage() {
 }
 
 function rankingProducts() {
-  if (activeRanking === "balanced") return dashboardData.rankings.balanced;
-  if (activeRanking === "cost_saving") return dashboardData.rankings.cost_saving;
-  return dashboardData.rankings.protein_focused;
+  return dashboardData.rankings[activeRanking];
 }
 
 function renderTable() {
@@ -157,7 +155,7 @@ function renderTable() {
   if (!products.length) {
     const row = document.createElement("tr");
     const cell = createElement("td", "number", "No listings are available for this ranking.");
-    cell.colSpan = 10;
+    cell.colSpan = 11;
     row.append(cell);
     tbody.replaceChildren(row);
     return;
@@ -213,7 +211,8 @@ function renderTable() {
     row.append(createElement("td", "number", formatCurrency(product.cost_per_100_kcal)));
     row.append(createElement("td", "number", `${formatNumber(product.protein_g_per_100_kcal)} g`));
     row.append(createElement("td", "number", formatCurrency(product.cost_per_100g_protein)));
-    row.append(createElement("td", "number score-col", formatNumber(product.balanced_value_score)));
+    row.append(createElement("td", "number score-col", formatNumber(product.value_score)));
+    row.append(createElement("td", "number score-col", formatNumber(product.protein_score)));
     return row;
   }));
 }
