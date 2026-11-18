@@ -5,6 +5,15 @@ read-only static dashboard comparing protein value across UK retailers.
 The current implementation scrapes Morrisons products, stores validated
 snapshots in PostgreSQL, and deploys fresh dashboard data to GitHub Pages.
 
+## Live dashboard
+
+- [Open the live GitHub Pages dashboard](https://nassim-assassi.github.io/Protein-Source-Helper/)
+- [View workflow runs and deployment status](https://github.com/Nassim-Assassi/Protein-Source-Helper/actions)
+
+GitHub Pages is rebuilt when dashboard files or the Pages workflow change, or
+after a successful `Scrapers Batch Workflow` run. The batch workflow is also
+available for manual dispatch.
+
 ## Current features
 
 - Morrisons product discovery and extraction across retailer categories.
@@ -16,7 +25,8 @@ snapshots in PostgreSQL, and deploys fresh dashboard data to GitHub Pages.
   metrics.
 - Static browser dashboard with retailer coverage, data-quality KPIs, and
   balanced, cost-saving, and protein-focused rankings.
-- GitHub Actions workflows for batch scraping and GitHub Pages publication.
+- GitHub Actions workflows for batch scraping, GitHub Pages publication,
+  integration tests, Python tests and linting, and SQL linting.
 - Local CSV export mode for testing a retailer extraction without database writes.
 
 ## Usage
