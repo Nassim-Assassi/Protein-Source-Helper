@@ -1,8 +1,6 @@
-from static_summary_pages.summary_pages_generator import (
-    export_dashboard,
-)
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from html.parser import HTMLParser
 from unittest.mock import MagicMock, patch
@@ -11,6 +9,10 @@ from unittest.mock import MagicMock, patch
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STATIC_ROOT = PROJECT_ROOT / "static_summary_pages"
 sys.path.insert(0, str(PROJECT_ROOT))
+
+from static_summary_pages.summary_pages_generator import (
+    export_dashboard,
+)
 
 
 class MarkupIndex(HTMLParser):
@@ -111,41 +113,110 @@ class TestStaticDashboardBrowserCode:
 
 
 class TestDashboardDataPayload:
-    def test_export_has_empty_malicious_and_normal_usable_values(self) -> None:
-        payload = json.loads(
-            (STATIC_ROOT / "data" / "dashboard-data.json").read_text(
-                encoding="utf-8"
-            )
-        )
+    def test_export_has_empty_malicious_and_normal_usable_values(
+        self, tmp_path: Path
+    ) -> None:
+        normal = {
+            "retailer_listing_id": 1,
+            "retailer_listing_name": "Chicken breast",
+            "canonical_product_name": "Chicken breast",
+            "retailer_id": 1,
+            "retailer_name": "Example retailer",
+            "brand_name": "Example brand",
+            "retailer_listing_source_url": "https://example.com/product",
+            "retailer_listing_image_url": "https://example.com/image.jpg",
+            "canonical_barcode_gtin": "1234567890123",
+            "snapshot_price": 2.5,
+            "snapshot_package_quantity": 300,
+            "snapshot_package_unit": "g",
+            "total_energy_kcal": 330,
+            "total_protein_g": 69,
+            "cost_per_100_kcal": 0.76,
+            "cost_per_100_kcal_normalized_score": 75,
+            "protein_g_per_100_kcal": 20.91,
+            "cost_per_100g_protein": 3.62,
+            "cost_per_100g_protein_normalized_score": 80,
+            "value_score": 75,
+            "protein_score": 80,
+            "balanced_overall_score": 78,
+            "value_focused_overall_score": 76,
+            "protein_focused_overall_score": 79,
+            "scrape_run_finished_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "canonical_product_id": 1,
+            "brand_id": 1,
+        }
+        empty_name = {
+            **normal,
+            "retailer_listing_id": 2,
+            "retailer_listing_name": None,
+        }
+        malicious = {
+            **normal,
+            "retailer_listing_id": 3,
+            "retailer_listing_name": '<img src=x onerror="alert(1)">',
+            "retailer_listing_source_url": "javascript:alert(1)",
+        }
+        settings = {
+            "DATABASE_HOST": "localhost",
+            "DATABASE_PORT": "5432",
+            "DATABASE_NAME": "test_db",
+            "DATABASE_USER": "test_user",
+            "DATABASE_PASSWORD": "test_password",
+        }
+        connection = MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = [normal, empty_name, malicious]
+        cursor.fetchone.return_value = {
+            "active_listings": 3,
+            "listings_with_barcode": 3,
+            "listings_with_image": 3,
+            "listings_with_source": 3,
+            "total_listings": 3,
+        }
+
+        with (
+            patch(
+                "static_summary_pages.summary_pages_generator.load_database_settings",
+                return_value=settings,
+            ),
+            patch(
+                "static_summary_pages.summary_pages_generator.psycopg.connect",
+                return_value=MagicMock(),
+            ) as connect,
+        ):
+            connect.return_value.__enter__.return_value = connection
+            output_path = tmp_path / "dashboard-data.json"
+            export_dashboard(output_path)
+
+        payload = json.loads(output_path.read_text(encoding="utf-8"))
 
         assert payload["kpis"]
         assert payload["retailers"]
         assert all(payload["rankings"].values())
 
-        normal = payload["rankings"]["value"][0]
-        assert normal["name"]
-        assert normal["source_url"].startswith("https://")
-        assert "nutrition_basis" not in normal
-        assert normal["energy_kcal"] > 0
-        assert normal["protein_g"] > 0
-        assert "cost_per_100g_protein" in normal
-        assert "price_per_protein_g" not in normal
-        assert 0 <= normal["value_score"] <= 100
-        assert 0 <= normal["protein_score"] <= 100
+        exported = {
+            product["retailer_listing_id"]: product
+            for product in payload["rankings"]["value"]
+        }
+        normal_product = exported[1]
+        assert normal_product["name"] == "Chicken breast"
+        assert normal_product["source_url"].startswith("https://")
+        assert "nutrition_basis" not in normal_product
+        assert normal_product["energy_kcal"] > 0
+        assert normal_product["protein_g"] > 0
+        assert "cost_per_100g_protein" in normal_product
+        assert "price_per_protein_g" not in normal_product
+        assert 0 <= normal_product["value_score"] <= 100
+        assert 0 <= normal_product["protein_score"] <= 100
         for field in (
             "balanced_overall_score",
             "value_focused_overall_score",
             "protein_focused_overall_score",
         ):
-            assert 0 <= normal[field] <= 100
-
-        empty_name = {**normal, "name": None}
-        malicious_name = {**normal, "name": '<img src=x onerror="alert(1)">'}
-        malicious_url = {**normal, "source_url": "javascript:alert(1)"}
-
-        assert empty_name["name"] is None
-        assert "<img" in malicious_name["name"]
-        assert malicious_url["source_url"].startswith("javascript:")
+            assert 0 <= normal_product[field] <= 100
+        assert exported[2]["name"] is None
+        assert "<img" in exported[3]["name"]
+        assert exported[3]["source_url"].startswith("javascript:")
 
     def test_overview_uses_focused_kpi_labels(self) -> None:
         app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
