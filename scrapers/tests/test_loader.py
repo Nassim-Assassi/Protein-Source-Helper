@@ -9,93 +9,48 @@ from scrapers.config import Config
 from scrapers.etl_contracts import ScrapeRunMetrics
 from scrapers.loader.load import (
     _connect,
-    _resolve_brand_id,
-    _resolve_canonical_product_id,
+    _stage_values,
     load_scrape,
 )
 from scrapers.retailer_config import RetailerConfig
 
 
-class TestResolveCanonicalProductId:
-    def test_gtin_products_can_share_the_first_listing_name(self) -> None:
-        cursor = Mock()
-        cursor.fetchone.side_effect = [(101,), (102,)]
-
-        first = _resolve_canonical_product_id(
-            cursor, "Retailer", "Same product name", "111", None
-        )
-        second = _resolve_canonical_product_id(
-            cursor, "Retailer", "Same product name", "222", None
-        )
-
-        assert first == (101, True)
-        assert second == (102, True)
-        assert cursor.execute.call_args_list[0].args[1] == (
-            "Same product name",
-            "111",
-            None,
-        )
-        assert cursor.execute.call_args_list[1].args[1] == (
-            "Same product name",
-            "222",
-            None,
-        )
-        assert all(
-            "ON CONFLICT DO NOTHING" in call.args[0]
-            for call in cursor.execute.call_args_list
+class TestStageValues:
+    def test_uses_retailer_scoped_name_when_gtin_is_missing(self) -> None:
+        row = {column: None for column in PRODUCT_COLUMNS}
+        row.update(
+            {
+                "listing_name": "Product",
+                "source_url": "https://example.com/product",
+                "barcode_gtin": "  ",
+                "out_of_stock": False,
+            }
         )
 
-    def test_existing_gtin_gets_brand_only_when_missing(self) -> None:
-        cursor = Mock()
-        cursor.fetchone.side_effect = [None, (101,)]
+        values = _stage_values(row, 1, "Retailer")
 
-        result = _resolve_canonical_product_id(
-            cursor, "Retailer", "Updated listing name", "111", 7
+        assert values[0] == 1
+        assert values[1] == "Product"
+        assert values[19] is None
+        assert values[22] == "Retailer_Product"
+
+    def test_preserves_gtin_canonical_name_and_text_ids(self) -> None:
+        row = {column: None for column in PRODUCT_COLUMNS}
+        row.update(
+            {
+                "listing_name": "Product",
+                "source_url": "https://example.com/product",
+                "external_id": 123,
+                "barcode_gtin": 456,
+                "out_of_stock": False,
+            }
         )
 
-        assert result == (101, False)
-        assert cursor.execute.call_count == 2
-        assert "SET brand_id = COALESCE(brand_id, %s)" in cursor.execute.call_args.args[
-            0]
-        assert "WHERE barcode_gtin = %s" in cursor.execute.call_args.args[0]
-        assert cursor.execute.call_args.args[1] == (7, "111")
+        values = _stage_values(row, 2, "Retailer")
 
-    def test_existing_gtin_without_incoming_brand_is_not_updated(self) -> None:
-        cursor = Mock()
-        cursor.fetchone.side_effect = [None, (101,)]
-
-        result = _resolve_canonical_product_id(
-            cursor, "Retailer", "Product", "111", None
-        )
-
-        assert result == (101, False)
-        assert cursor.execute.call_count == 2
-        assert "SELECT canonical_product_id" in cursor.execute.call_args.args[0]
-
-    def test_no_gtin_product_uses_retailer_scoped_name_on_conflict(self) -> None:
-        cursor = Mock()
-        cursor.fetchone.side_effect = [None, (101,)]
-
-        result = _resolve_canonical_product_id(
-            cursor, "Retailer", "Product", None, None
-        )
-
-        assert result == (101, False)
-        assert cursor.execute.call_args_list[0].args[1] == (
-            "Retailer_Product",
-            None,
-            None,
-        )
-        assert "canonical_product_name = %s AND barcode_gtin IS NULL" in (
-            cursor.execute.call_args_list[1].args[0]
-        )
-
-    def test_missing_brand_lookup_raises_runtime_error(self) -> None:
-        cursor = Mock()
-        cursor.fetchone.side_effect = [None, None]
-
-        with pytest.raises(RuntimeError, match="brand"):
-            _resolve_brand_id(cursor, "Brand")
+        assert values[17] == "123"
+        assert values[19] == "456"
+        assert values[22] == "Product"
 
 
 class TestLoadScrape:
@@ -132,21 +87,20 @@ class TestLoadScrape:
 
         with (
             patch("scrapers.loader.load._resolve_retailer_id", return_value=1),
-            patch("scrapers.loader.load._resolve_brand_id",
-                  return_value=(10, False)),
+            patch("scrapers.loader.load._create_staging_table"),
+            patch("scrapers.loader.load._copy_products_to_stage"),
             patch(
-                "scrapers.loader.load._resolve_canonical_product_id",
-                return_value=(20, False),
+                "scrapers.loader.load._bulk_resolve_brands_and_categories",
+                return_value=(0, 0),
             ),
             patch(
-                "scrapers.loader.load._resolve_retailer_category_id",
-                return_value=(30, False),
+                "scrapers.loader.load._bulk_insert_canonical_products",
+                return_value=0,
             ),
+            patch("scrapers.loader.load._bulk_upsert_retailer_listings"),
             patch(
-                "scrapers.loader.load._resolve_retailer_listing_id",
-                return_value=40,
+                "scrapers.loader.load._bulk_insert_snapshots", return_value=1
             ),
-            patch("scrapers.loader.load._load_snapshot", return_value=True),
         ):
             result = load_scrape(
                 connection,
@@ -170,7 +124,7 @@ class TestLoadScrape:
         assert success_update.args[1][9] == 1
         assert metrics.loaded_count == 1
 
-    def test_load_scrape_caches_brand_and_category_ids(self) -> None:
+    def test_load_scrape_uses_bulk_operations_and_reports_new_rows(self) -> None:
         connection = MagicMock()
         products = pd.concat(
             [
@@ -182,23 +136,20 @@ class TestLoadScrape:
 
         with (
             patch("scrapers.loader.load._resolve_retailer_id", return_value=1),
+            patch("scrapers.loader.load._create_staging_table"),
+            patch("scrapers.loader.load._copy_products_to_stage") as copy_rows,
             patch(
-                "scrapers.loader.load._resolve_brand_id",
-                return_value=(10, True),
-            ) as resolve_brand,
+                "scrapers.loader.load._bulk_resolve_brands_and_categories",
+                return_value=(1, 1),
+            ) as resolve_entities,
             patch(
-                "scrapers.loader.load._resolve_canonical_product_id",
-                return_value=(20, False),
+                "scrapers.loader.load._bulk_insert_canonical_products",
+                return_value=2,
+            ) as insert_products,
+            patch("scrapers.loader.load._bulk_upsert_retailer_listings") as upsert,
+            patch(
+                "scrapers.loader.load._bulk_insert_snapshots", return_value=2
             ),
-            patch(
-                "scrapers.loader.load._resolve_retailer_category_id",
-                return_value=(30, True),
-            ) as resolve_category,
-            patch(
-                "scrapers.loader.load._resolve_retailer_listing_id",
-                return_value=40,
-            ),
-            patch("scrapers.loader.load._load_snapshot", return_value=True),
         ):
             result = load_scrape(
                 connection,
@@ -207,10 +158,15 @@ class TestLoadScrape:
                 products,
             )
 
-        resolve_brand.assert_called_once()
-        resolve_category.assert_called_once()
+        copy_rows.assert_called_once()
+        resolve_entities.assert_called_once_with(
+            connection.cursor.return_value.__enter__.return_value, 1
+        )
+        insert_products.assert_called_once()
+        upsert.assert_called_once()
         assert result.loaded_count == 2
         assert result.new_brand_count == 1
+        assert result.new_product_count == 2
         assert result.new_retailer_category_count == 1
 
     @pytest.mark.parametrize(
@@ -228,15 +184,17 @@ class TestLoadScrape:
 
         with (
             patch("scrapers.loader.load._resolve_retailer_id", return_value=1),
+            patch("scrapers.loader.load._create_staging_table"),
             patch(
-                "scrapers.loader.load._resolve_canonical_product_id",
-                return_value=(20, False),
+                "scrapers.loader.load._bulk_resolve_brands_and_categories",
+                return_value=(0, 0),
             ),
             patch(
-                "scrapers.loader.load._resolve_retailer_listing_id",
-                return_value=40,
+                "scrapers.loader.load._bulk_insert_canonical_products",
+                return_value=0,
             ),
-            patch("scrapers.loader.load._load_snapshot", return_value=True),
+            patch("scrapers.loader.load._bulk_upsert_retailer_listings"),
+            patch("scrapers.loader.load._bulk_insert_snapshots", return_value=100),
         ):
             result = load_scrape(
                 connection,
