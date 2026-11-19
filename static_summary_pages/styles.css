@@ -14,6 +14,17 @@
 
 * { box-sizing: border-box; }
 
+.insight-band .large-text {
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.insight-band .medium-text {
+  font-size: 16px;
+  font-weight: 400;
+}
+
 body {
   margin: 0;
   color: var(--ink);
@@ -63,6 +74,7 @@ section { margin-bottom: 48px; }
 .insight-band .eyebrow { color: var(--lime); }
 .insight-band strong { font-family: "Manrope", sans-serif; font-size: 21px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .insight-band span { color: #bbc7bf; font-size: 13px; }
+.insight-band [id$="-detail"] { white-space: pre-line; }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 22px; }
 .panel-heading { display: flex; justify-content: space-between; gap: 16px; align-items: start; }

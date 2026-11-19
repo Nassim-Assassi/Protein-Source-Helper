@@ -80,17 +80,18 @@ function productLabel(product) {
 }
 
 function renderInsights() {
-  const bestOverall = dashboardData.rankings.balanced_overall[0];
-  const cheapest = dashboardData.rankings.cost_per_100_kcal[0];
-  $("#best-overall").textContent = bestOverall ? productLabel(bestOverall) : "—";
-  $("#best-overall-detail").textContent = bestOverall
-    ? bestOverall.retailer_name
-    : "No valid scores in this export";
-  $("#lowest-cost").textContent = cheapest ? formatCurrency(cheapest.cost_per_100_kcal) : "—";
-  $("#lowest-cost-detail").textContent = cheapest
-    ? `${productLabel(cheapest)} · ${cheapest.retailer_name}`
-    : "No valid metric in this export";
-  $("#eligible-count").textContent = dashboardData.coverage.eligible_in_stock_listings?.toLocaleString("en-GB") ?? "—";
+  const insights = [
+    ["#best-value", "#best-value-detail", dashboardData.rankings.value_focused_overall[0]],
+    ["#best-overall", "#best-overall-detail", dashboardData.rankings.balanced_overall[0]],
+    ["#best-protein", "#best-protein-detail", dashboardData.rankings.protein_focused_overall[0]],
+  ];
+
+  insights.forEach(([nameSelector, detailSelector, product]) => {
+    $(nameSelector).textContent = product ? productLabel(product) : "—";
+    $(detailSelector).textContent = product
+      ? `${formatCurrency(product.price)} · ${product.retailer_name}\n${formatNumber(product.protein_g)} g protein\n${formatNumber(product.energy_kcal)} kcal`
+      : "No valid score in this export";
+  });
 }
 
 function renderRetailerChart() {
